@@ -3,19 +3,14 @@ using GameCore.Utility;
 
 namespace GameCore.Statistics;
 
-[JsonConverter(typeof(ConditionConverter))]
+//[JsonConverter(typeof(ConditionConverter))]
 public abstract class Condition : IPoolable
 {
-    protected Condition(string conditionType)
-    {
-        ConditionType = conditionType;
-    }
-
     private bool _result;
     private Condition? _parent;
 
-    [JsonPropertyOrder(-5)]
-    public string ConditionType { get; }
+    // [JsonPropertyOrder(-5)]
+    // public string ConditionType => ConditionDB.GetId(this);
     [JsonPropertyOrder(-4)]
     public bool Not { get; set; }
     [JsonPropertyOrder(-3)]
@@ -57,13 +52,20 @@ public abstract class Condition : IPoolable
     public void ClearObject()
     {
         _result = false;
-
-        And?.ReturnToPool();
-        Or?.ReturnToPool();
-
-        And = null;
-        Or = null;
         _parent = null;
+
+        if (And is not null)
+        {
+            And.ReturnToPool();
+            And = null;
+        }
+
+        if (Or is not null)
+        {
+            Or.ReturnToPool();
+            Or = null;
+        }
+
         Conditional = null;
         ReupOnMet = false;
         Not = false;
@@ -86,11 +88,13 @@ public abstract class Condition : IPoolable
 
     public Condition CloneSingle()
     {
-        Condition clone = Pool.GetOfSameType(this);
+        if (Pool.GetSameTypeOrNull(this) is not Condition clone)
+            clone = ConditionDB.GetNew(this);
+
         clone.ReupOnMet = ReupOnMet;
         clone.Not = Not;
         clone.IgnoreModsWithSource = IgnoreModsWithSource;
-        SetCloneData(clone);
+        clone.CopyData(this);
         return clone;
     }
 
@@ -105,15 +109,15 @@ public abstract class Condition : IPoolable
 
     public void Reup()
     {
-        ReupData();
+        ResetData();
         UpdateCondition();
     }
 
     public void ReupAllData()
     {
-        And?.ReupData();
-        Or?.ReupData();
-        ReupData();
+        And?.ResetData();
+        Or?.ResetData();
+        ResetData();
     }
 
     public void Register(IConditional owner, Condition? parent)
@@ -143,18 +147,6 @@ public abstract class Condition : IPoolable
         Registered = false;
     }
 
-    public void InsertOr(Condition child)
-    {
-        Insert(child);
-        Or = child;
-    }
-
-    public void InsertAnd(Condition child)
-    {
-        Insert(child);
-        And = child;
-    }
-
     protected abstract void SubscribeEvents();
 
     protected abstract void UnsubscribeEvents();
@@ -164,7 +156,7 @@ public abstract class Condition : IPoolable
     /// <summary>
     /// Reverts condition data to initial user set values.
     /// </summary>
-    protected abstract void ReupData();
+    protected abstract void ResetData();
 
     /// <summary>
     /// Clears all condition data.
@@ -174,8 +166,8 @@ public abstract class Condition : IPoolable
     /// <summary>
     /// Used to assign values for a derived Condition object.
     /// </summary>
-    /// <param name="clone">A cloned Condition of the derived type.</param>
-    protected abstract void SetCloneData(Condition clone);
+    /// <param name="condition">A cloned Condition of the derived type.</param>
+    protected abstract void CopyData(Condition condition);
 
     /// <summary>
     /// Updates the _conditionMet flag and returns true if the result is different
@@ -205,43 +197,37 @@ public abstract class Condition : IPoolable
 
         Conditional?.OnConditionChanged(this);
     }
-
-    private void Insert(Condition child)
-    {
-        _parent = child._parent;
-        child._parent = this;
-    }
 }
 
 public static class ConditionExtensions
 {
-    public static T AddOr<T>(this T condition, Condition or) where T : Condition
+    public static T SetOr<T>(this T condition, Condition or) where T : Condition
     {
         condition.Or = or;
         return condition;
     }
 
-    public static T AddAnd<T>(this T condition, Condition and) where T : Condition
+    public static T SetAnd<T>(this T condition, Condition and) where T : Condition
     {
         condition.And = and;
         return condition;
     }
 
-    public static T EnableIgnoreModsWithSource<T>(this T condition) where T : Condition
+    public static T SetIgnoreModsWithSource<T>(this T condition, bool enable) where T : Condition
     {
-        condition.IgnoreModsWithSource = true;
+        condition.IgnoreModsWithSource = enable;
         return condition;
     }
 
-    public static T EnableNot<T>(this T condition) where T : Condition
+    public static T SetNot<T>(this T condition, bool enable) where T : Condition
     {
-        condition.Not = true;
+        condition.Not = enable;
         return condition;
     }
 
-    public static T EnableReupOnMet<T>(this T condition) where T : Condition
+    public static T SetReupOnMet<T>(this T condition, bool enable) where T : Condition
     {
-        condition.ReupOnMet = true;
+        condition.ReupOnMet = enable;
         return condition;
     }
 }

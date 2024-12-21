@@ -39,7 +39,10 @@ public sealed class StatusEffect : IPoolable, IConditional
     public void ClearObject()
     {
         Unregister();
-        CustomConditions?.ReturnToPool();
+
+        if (CustomConditions is not null)
+            Pool.Return(CustomConditions);
+
         CustomConditions = null;
         EffectDef = null;
         Stats = null;
@@ -78,7 +81,7 @@ public sealed class StatusEffect : IPoolable, IConditional
         if (effectDef.CustomEffects.Count == 0)
             return;
 
-        CustomConditions = ListPool.Get<Condition>();
+        CustomConditions = Pool.GetList<Condition>();
 
         foreach (var effect in effectDef.CustomEffects)
         {
@@ -98,7 +101,7 @@ public sealed class StatusEffect : IPoolable, IConditional
         if (statusEffect.CustomConditions is null)
             return;
 
-        CustomConditions = ListPool.Get<Condition>();
+        CustomConditions = Pool.GetList<Condition>();
 
         foreach (Condition condition in statusEffect.CustomConditions)
         {

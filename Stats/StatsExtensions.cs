@@ -41,7 +41,7 @@ public static class StatsExtensions
     public static void ClearObject(this Dictionary<string, List<Modifier>> modLookup)
     {
         foreach (KeyValuePair<string, List<Modifier>> pair in modLookup)
-            pair.Value.ReturnToPool();
+            Pool.Return(pair.Value);
 
         modLookup.Clear();
     }

@@ -38,9 +38,14 @@ public static class OpDB
     public const string One = "One";
 
     public static ReadOnlyCollection<string> OrderedOps { get; private set; }
-    public static readonly Comparison<Modifier> SortByOp =
+    public static readonly Comparison<Modifier> OpSortCompare =
         (x, y) =>
         {
+            int res = string.Compare(x.StatTypeId, y.StatTypeId);
+
+            if (res != 0)
+                return res;
+
             int left = x is null ? -1 : GetIndex(x.Op);
             int right = y is null ? -1 : GetIndex(y.Op);
 
@@ -115,9 +120,14 @@ public static class OpDB
         s_orderedOpsIndexed = order.ToIndexedDictionary();
     }
 
-    public static void SortModByOp(this List<Modifier> mods)
+    public static void SortByOp(this Modifier[] mods)
     {
-        mods.Sort(SortByOp);
+        Array.Sort(mods, OpSortCompare);
+    }
+
+    public static void SortByOp(this List<Modifier> mods)
+    {
+        mods.Sort(OpSortCompare);
     }
 }
 

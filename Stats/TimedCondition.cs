@@ -6,11 +6,6 @@ namespace GameCore.Statistics;
 
 public sealed class TimedCondition : Condition
 {
-    public TimedCondition()
-        : base(conditionType: TypeId)
-    {
-    }
-
     [JsonIgnore]
     public static string TypeId { get; set; } = "Timed";
     public float Duration { get; set; }
@@ -42,7 +37,7 @@ public sealed class TimedCondition : Condition
             RaiseConditionChanged();
     }
 
-    protected override void ReupData()
+    protected override void ResetData()
     {
         TimeLeft = Duration;
     }
@@ -53,10 +48,12 @@ public sealed class TimedCondition : Condition
         TimeLeft = default;
     }
 
-    protected override void SetCloneData(Condition clone)
+    protected override void CopyData(Condition condition)
     {
-        TimedCondition timedCondition = (TimedCondition)clone;
-        timedCondition.TimeLeft = TimeLeft;
-        timedCondition.Duration = Duration;
+        if (condition is not TimedCondition timedCondition)
+            return;
+
+        TimeLeft = timedCondition.TimeLeft;
+        Duration = timedCondition.Duration;
     }
 }

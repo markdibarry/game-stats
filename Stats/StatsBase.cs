@@ -8,7 +8,7 @@ namespace GameCore.Statistics;
 public abstract class StatsBase : IPoolable
 {
     private bool _processing;
-    private readonly List<TimedCondition> _timedConditions = ListPool.Get<TimedCondition>();
+    private readonly List<TimedCondition> _timedConditions = Pool.GetList<TimedCondition>();
 
     [JsonIgnore]
     public IStatsOwner? StatsOwner { get; private set; }
@@ -20,6 +20,7 @@ public abstract class StatsBase : IPoolable
 
     public void ClearObject()
     {
+        _processing = false;
         StatsOwner = null;
         StatLookup.ClearObject();
         StatusEffects.ClearObject();
@@ -28,9 +29,9 @@ public abstract class StatsBase : IPoolable
 
     protected abstract void ClearData();
 
-    public StatsBase Clone()
+    public T Clone<T>() where T : StatsBase, new()
     {
-        StatsBase clone = Pool.GetOfSameType(this);
+        T clone = Pool.Get<T>();
         SetCloneData(clone);
         clone.Initialize(null, StatLookup, StatusEffects);
         return clone;
@@ -122,7 +123,7 @@ public abstract class StatsBase : IPoolable
         return stat;
     }
 
-    public IReadOnlyCollection<Modifier> GetModifiersByType(string statTypeId)
+    public IReadOnlyList<Modifier> GetModifiersByType(string statTypeId)
     {
         return GetStat(statTypeId)?.Modifiers ?? [];
     }
@@ -427,7 +428,7 @@ public abstract class StatsBase : IPoolable
             clonedTime.Register(existingMod, null);
 
             if (existingMod.Duration is not null)
-                clonedTime.AddOr(existingMod.Duration);
+                clonedTime.SetOr(existingMod.Duration);
 
             existingMod.Duration = clonedTime;
 

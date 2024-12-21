@@ -11,7 +11,7 @@ public class Stat : IPoolable
     public Growth? Growth { get; set; }
     public float BaseValue { get; set; }
     public float CurrentValue { get; set; }
-    public List<Modifier> Modifiers { get; } = ListPool.Get<Modifier>();
+    public List<Modifier> Modifiers { get; set; } = Pool.GetList<Modifier>();
 
     public static Stat Create(string statTypeId, float baseValue)
     {
@@ -40,38 +40,12 @@ public class Stat : IPoolable
     public void AddMod(Modifier mod)
     {
         Modifiers.Add(mod);
-        Modifiers.SortModByOp();
+        Modifiers.SortByOp();
     }
 
     public float CalculateDefault(bool ignoreHidden)
     {
-        float result = BaseValue;
-        float percentToAdd = default;
-
-        for (int i = 0; i < Modifiers.Count; i++)
-        {
-            Modifier mod = Modifiers[i];
-
-            if (ignoreHidden && mod.IsHidden)
-                continue;
-
-            if (!mod.IsActive)
-                continue;
-
-            if (mod.Op == OpDB.PercentAdd)
-            {
-                percentToAdd = mod.Apply(percentToAdd);
-
-                if (i == Modifiers.Count - 1 || Modifiers[i + 1].Op != OpDB.PercentAdd)
-                    result *= 1 + percentToAdd;
-            }
-            else
-            {
-                result = mod.Apply(result);
-            }
-        }
-
-        return result;
+        return Modifier.Calculate(Modifiers, BaseValue, ignoreHidden);
     }
 
     public void ClearObject()
@@ -122,7 +96,7 @@ public class Stat : IPoolable
 
     public void SortModifiers()
     {
-        Modifiers.SortModByOp();
+        Modifiers.SortByOp();
     }
 
     public bool TryRemoveMod(Modifier mod)

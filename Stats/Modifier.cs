@@ -1,4 +1,6 @@
-﻿using System.Text.Json.Serialization;
+﻿using System;
+using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using GameCore.Utility;
 
 namespace GameCore.Statistics;
@@ -132,5 +134,53 @@ public sealed class Modifier : IPoolable, IConditional
         IsActive = false;
 
         _registered = false;
+    }
+
+    public static float Calculate(
+        IReadOnlyList<Modifier> mods,
+        int start,
+        float baseValue = 0,
+        bool ignoreInactive = true,
+        bool ignoreHidden = false)
+    {
+        float result = baseValue;
+        float percentToAdd = default;
+        string statTypeId = string.Empty;
+
+        for (int i = start; i < mods.Count; i++)
+        {
+            Modifier mod = mods[i];
+
+            // Add only of same type
+            if (statTypeId == string.Empty)
+                statTypeId = mod.StatTypeId;
+            else if (mod.StatTypeId != statTypeId)
+                return result;
+
+            if ((ignoreInactive && !mod.IsActive) || (ignoreHidden && mod.IsHidden))
+                continue;
+
+            if (mod.Op != OpDB.PercentAdd)
+            {
+                result = mod.Apply(result);
+                continue;
+            }
+
+            percentToAdd = mod.Apply(percentToAdd);
+
+            // Is last percent mod
+            if (i + 1 == mods.Count || mods[i + 1].Op != OpDB.PercentAdd)
+                result *= 1 + percentToAdd;
+        }
+
+        return result;
+    }
+
+    public static float Calculate(
+        IReadOnlyList<Modifier> mods,
+        float baseValue = 0,
+        bool ignoreHidden = false)
+    {
+        return Calculate(mods, 0, baseValue, ignoreInactive: true, ignoreHidden);
     }
 }
