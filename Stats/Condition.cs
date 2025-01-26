@@ -3,14 +3,11 @@ using GameCore.Utility;
 
 namespace GameCore.Statistics;
 
-//[JsonConverter(typeof(ConditionConverter))]
 public abstract class Condition : IPoolable
 {
     private bool _result;
     private Condition? _parent;
 
-    // [JsonPropertyOrder(-5)]
-    // public string ConditionType => ConditionDB.GetId(this);
     [JsonPropertyOrder(-4)]
     public bool Not { get; set; }
     [JsonPropertyOrder(-3)]
