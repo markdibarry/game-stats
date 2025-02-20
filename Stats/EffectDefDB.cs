@@ -19,11 +19,22 @@ public static class EffectDefDB
         return s_data.TryGetValue(statusEffectId, out data);
     }
 
-    public static void Add(EffectDef effectDef)
+    // public static EffectDef Add(EffectDef effectDef)
+    // {
+    //     if (effectDef.StatTypeId.Length == 0 || s_data.ContainsKey(effectDef.StatTypeId))
+    //         throw new System.Exception("Effect definition must have a unique type id.");
+
+    //     s_data.Add(effectDef.StatTypeId, effectDef);
+    //     return effectDef;
+    // }
+
+    public static EffectDef Add(string effectName)
     {
-        if (effectDef.StatTypeId.Length == 0)
+        if (effectName.Length == 0 || s_data.ContainsKey(effectName))
             throw new System.Exception("Effect definition must have a unique type id.");
 
-        s_data.Add(effectDef.StatTypeId, effectDef);
+        EffectDef effectDef = new(effectName);
+        s_data.Add(effectName, effectDef);
+        return effectDef;
     }
 }

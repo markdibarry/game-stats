@@ -146,13 +146,12 @@ public sealed class StatusEffect : IPoolable, IConditional
 
     private bool TryInvokeCustom(Condition condition)
     {
-        Condition headCondition = condition.GetHeadCondition();
-        int index = CustomConditions?.IndexOf(headCondition) ?? -1;
+        int index = CustomConditions?.IndexOf(condition) ?? -1;
 
         if (index == -1)
             return false;
 
-        if (headCondition.CheckAllConditions())
+        if (condition.CheckAllConditions())
         {
             if (Stats is null || EffectDef is null || CustomConditions is null)
                 return false;

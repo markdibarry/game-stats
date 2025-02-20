@@ -37,37 +37,19 @@ public static class ConditionDB
         return func();
     }
 
-    public static string GetId(this Condition condition)
-    {
-        Type type = condition.GetType();
-
-        if (!s_ids.TryGetValue(type, out string? id))
-            throw new Exception($"Condition {type.Name} not registered.");
-
-        return id;
-    }
-
-    public static Type GetType(string id)
-    {
-        if (!s_types.TryGetValue(id, out Type? type))
-            throw new Exception($"Condition {id} not registered.");
-
-        return type;
-    }
-
     private static void ResolveCondition(JsonTypeInfo typeInfo)
     {
-        if (typeInfo.Type == typeof(Condition))
-        {
-            typeInfo.PolymorphismOptions = new JsonPolymorphismOptions
-            {
-                TypeDiscriminatorPropertyName = "ConditionType",
-                IgnoreUnrecognizedTypeDiscriminators = true,
-                UnknownDerivedTypeHandling = JsonUnknownDerivedTypeHandling.FailSerialization
-            };
+        if (typeInfo.Type != typeof(Condition))
+            return;
 
-            foreach (JsonDerivedType derivedType in s_jsonDerivedTypes)
-                typeInfo.PolymorphismOptions.DerivedTypes.Add(derivedType);
-        }
+        typeInfo.PolymorphismOptions = new JsonPolymorphismOptions
+        {
+            TypeDiscriminatorPropertyName = "ConditionType",
+            IgnoreUnrecognizedTypeDiscriminators = true,
+            UnknownDerivedTypeHandling = JsonUnknownDerivedTypeHandling.FailSerialization
+        };
+
+        foreach (JsonDerivedType derivedType in s_jsonDerivedTypes)
+            typeInfo.PolymorphismOptions.DerivedTypes.Add(derivedType);
     }
 }

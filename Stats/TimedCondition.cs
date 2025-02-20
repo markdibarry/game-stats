@@ -20,23 +20,6 @@ public sealed class TimedCondition : Condition
         return timedCondition;
     }
 
-    protected override void SubscribeEvents() => Stats?.RegisterTimedCondition(this);
-
-    protected override void UnsubscribeEvents() => Stats?.UnregisterTimedCondition(this);
-
-    protected override bool GetResult() => TimeLeft <= 0;
-
-    public void Process(double delta)
-    {
-        if (GetResult())
-            return;
-
-        TimeLeft = Math.Max(0, TimeLeft - (float)delta);
-
-        if (GetResult())
-            RaiseConditionChanged();
-    }
-
     protected override void ResetData()
     {
         TimeLeft = Duration;
@@ -55,5 +38,30 @@ public sealed class TimedCondition : Condition
 
         TimeLeft = timedCondition.TimeLeft;
         Duration = timedCondition.Duration;
+    }
+
+    protected override void SubscribeEvents()
+    {
+        if (Stats is not null)
+            Stats.ProcessTime += OnProcess;
+    }
+
+    protected override void UnsubscribeEvents()
+    {
+        if (Stats is not null)
+            Stats.ProcessTime -= OnProcess;
+    }
+
+    protected override bool Evaluate() => TimeLeft <= 0;
+
+    public void OnProcess(double delta)
+    {
+        if (Evaluate())
+            return;
+
+        TimeLeft = Math.Max(0, TimeLeft - (float)delta);
+
+        if (Evaluate())
+            RaiseConditionChanged();
     }
 }

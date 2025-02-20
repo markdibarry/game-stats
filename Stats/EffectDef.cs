@@ -21,13 +21,31 @@ public class EffectDef
     /// refreshed. Ignored if StackMode is set to 'Active'.
     /// </summary>
     public bool ReupOnTimeout { get; init; }
-    public Condition? DefaultDuration { get; init; }
-    public List<EffectOnCondition> CustomEffects { get; init; } = [];
-    public Effect? OnActivate { get; init; }
-    public Effect? OnAddStack { get; init; }
-    public Effect? OnRemoveStack { get; init; }
-    public Effect? OnDeactivate { get; init; }
-    public IReadOnlyCollection<Modifier> Modifiers { get; init; } = [];
+    public Condition? DefaultDuration { get; private set; }
+    public List<EffectOnCondition> CustomEffects { get; } = [];
+    public Effect? OnActivate { get; private set; }
+    public Effect? OnAddStack { get; private set; }
+    public Effect? OnRemoveStack { get; private set; }
+    public Effect? OnDeactivate { get; private set; }
+    public List<Modifier> Modifiers { get; } = [];
+
+    public EffectDef AddModifier(Modifier mod)
+    {
+        Modifiers.Add(mod);
+        return this;
+    }
+
+    public EffectDef AddCustomEffect(Condition condition, Effect effect)
+    {
+        CustomEffects.Add(new EffectOnCondition(effect, condition));
+        return this;
+    }
+
+    public EffectDef SetDefaultDuration(Condition condition)
+    {
+        DefaultDuration = condition;
+        return this;
+    }
 }
 
 public class EffectOnCondition

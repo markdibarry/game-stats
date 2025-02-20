@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿using System;
+using System.Text.Json.Serialization;
 using GameCore.Utility;
 
 namespace GameCore.Statistics;
@@ -19,10 +20,17 @@ public abstract class Condition : IPoolable
     [JsonPropertyOrder(21)]
     public Condition? Or { get; set; }
     [JsonIgnore]
-    public StatsBase? Stats => Conditional?.Stats;
+    public StatsBase? Stats => Conditional.Stats;
     [JsonIgnore]
     public bool Registered { get; private set; }
-    protected IConditional? Conditional { get; private set; }
+    protected IConditional Conditional { get; private set; } = null!;
+
+    public static T Create<T>(Action<T> setup) where T : Condition, new()
+    {
+        T cond = Pool.Get<T>();
+        setup(cond);
+        return cond;
+    }
 
     public bool CheckAllConditions(bool hasSource = false)
     {
@@ -63,7 +71,7 @@ public abstract class Condition : IPoolable
             Or = null;
         }
 
-        Conditional = null;
+        Conditional = null!;
         ReupOnMet = false;
         Not = false;
         IgnoreModsWithSource = false;
@@ -140,7 +148,7 @@ public abstract class Condition : IPoolable
         And?.Unregister();
         Or?.Unregister();
         _parent = null;
-        Conditional = null;
+        Conditional = null!;
         Registered = false;
     }
 
@@ -148,7 +156,7 @@ public abstract class Condition : IPoolable
 
     protected abstract void UnsubscribeEvents();
 
-    protected abstract bool GetResult();
+    protected abstract bool Evaluate();
 
     /// <summary>
     /// Reverts condition data to initial user set values.
@@ -173,7 +181,7 @@ public abstract class Condition : IPoolable
     /// <returns>The result of whether the condition was updated or not.</returns>
     protected bool UpdateCondition()
     {
-        bool result = GetResult();
+        bool result = Evaluate();
 
         if (Not)
             result = !result;
@@ -192,7 +200,8 @@ public abstract class Condition : IPoolable
         if (!UpdateCondition())
             return;
 
-        Conditional?.OnConditionChanged(this);
+        Condition condition = GetHeadCondition();
+        Conditional.OnConditionChanged(condition);
     }
 }
 

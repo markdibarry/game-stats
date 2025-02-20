@@ -7,20 +7,17 @@ namespace GameCore.Statistics;
 
 public abstract class StatsBase : IPoolable
 {
-    private bool _processing;
-    private readonly List<TimedCondition> _timedConditions = Pool.GetList<TimedCondition>();
-
     [JsonIgnore]
     public IStatsOwner? StatsOwner { get; private set; }
     protected Dictionary<string, Stat> StatLookup { get; } = [];
     protected Dictionary<string, StatusEffect> StatusEffects { get; } = [];
 
+    public event Action<double>? ProcessTime;
     public event Action<StatsBase, string, ModChangeType>? ModChanged;
     public event Action<StatsBase, string, ModChangeType>? StatusEffectChanged;
 
     public void ClearObject()
     {
-        _processing = false;
         StatsOwner = null;
         StatLookup.ClearObject();
         StatusEffects.ClearObject();
@@ -137,21 +134,8 @@ public abstract class StatsBase : IPoolable
     {
         if (processTime)
         {
-            _processing = true;
-
-            for (int i = _timedConditions.Count - 1; i >= 0; i--)
-            {
-                TimedCondition timedCondition = _timedConditions[i];
-                timedCondition.Process(delta);
-
-                if (!timedCondition.Registered)
-                    _timedConditions.RemoveAt(i);
-            }
-
-            _processing = false;
+            ProcessTime?.Invoke(delta);
         }
-
-        OnProcess(delta);
     }
 
     public bool TryRemoveModBySource(Modifier sourceMod, object? source)
@@ -219,17 +203,6 @@ public abstract class StatsBase : IPoolable
             UpdateStatusEffect(statTypeId);
     }
 
-    public void RegisterTimedCondition(TimedCondition timedCondition)
-    {
-        _timedConditions.Add(timedCondition);
-    }
-
-    public void UnregisterTimedCondition(TimedCondition timedCondition)
-    {
-        if (!_processing)
-            _timedConditions.Remove(timedCondition);
-    }
-
     protected virtual void AddDefaultStats() { }
 
     protected void AddDefaultStat(string statTypeId, float defaultValue)
@@ -261,8 +234,6 @@ public abstract class StatsBase : IPoolable
     protected virtual bool IsStatusEffect(string statType) => false;
 
     protected virtual bool IsImmuneToStatusEffect(string statType) => false;
-
-    protected virtual void OnProcess(double delta) { }
 
     protected abstract void SetCloneData(StatsBase clone);
 
