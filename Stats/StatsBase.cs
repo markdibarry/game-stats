@@ -29,7 +29,7 @@ public abstract class StatsBase : IPoolable
     public T Clone<T>() where T : StatsBase, new()
     {
         T clone = Pool.Get<T>();
-        SetCloneData(clone);
+        clone.CopyData(this);
         clone.Initialize(null, StatLookup, StatusEffects);
         return clone;
     }
@@ -235,7 +235,7 @@ public abstract class StatsBase : IPoolable
 
     protected virtual bool IsImmuneToStatusEffect(string statType) => false;
 
-    protected abstract void SetCloneData(StatsBase clone);
+    protected abstract void CopyData(StatsBase clone);
 
     protected void UpdateStatusEffect(string statTypeId)
     {

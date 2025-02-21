@@ -28,6 +28,13 @@ public sealed class Modifier : IPoolable, IConditional
 
     public static Modifier Create() => Pool.Get<Modifier>();
 
+    public static Modifier Create(Action<Modifier> action)
+    {
+        Modifier mod = Create();
+        action(mod);
+        return mod;
+    }
+
     public static Modifier Create(
         string statTypeId,
         string op,
@@ -75,7 +82,7 @@ public sealed class Modifier : IPoolable, IConditional
 
     public Modifier Clone()
     {
-        Modifier mod = Pool.Get<Modifier>();
+        Modifier mod = Create();
 
         mod.StatTypeId = StatTypeId;
         mod.Op = Op;

@@ -171,8 +171,8 @@ public abstract class Condition : IPoolable
     /// <summary>
     /// Used to assign values for a derived Condition object.
     /// </summary>
-    /// <param name="condition">A cloned Condition of the derived type.</param>
-    protected abstract void CopyData(Condition condition);
+    /// <param name="source">The condition to copy values from.</param>
+    protected abstract void CopyData(Condition source);
 
     /// <summary>
     /// Updates the _conditionMet flag and returns true if the result is different
