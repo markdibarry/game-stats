@@ -9,13 +9,13 @@ public sealed class Modifier : IPoolable, IConditional
 {
     private bool _registered;
 
-    [JsonPropertyOrder(-5)]
+    [JsonPropertyOrder(0)]
     public string StatTypeId { get; set; } = string.Empty;
-    [JsonPropertyOrder(-4)]
+    [JsonPropertyOrder(1)]
     public string Op { get; set; } = string.Empty;
-    [JsonPropertyOrder(-3)]
+    [JsonPropertyOrder(2)]
     public float Value { get; set; }
-    [JsonPropertyOrder(-1)]
+    [JsonPropertyOrder(3)]
     public bool IsHidden { get; set; }
     [JsonPropertyOrder(5)]
     public Condition? Duration { get; set; }
@@ -145,6 +145,14 @@ public sealed class Modifier : IPoolable, IConditional
 
     public static float Calculate(
         IReadOnlyList<Modifier> mods,
+        float baseValue = 0,
+        bool ignoreHidden = false)
+    {
+        return Calculate(mods, 0, baseValue, ignoreInactive: true, ignoreHidden);
+    }
+
+    public static float Calculate(
+        IReadOnlyList<Modifier> mods,
         int start,
         float baseValue = 0,
         bool ignoreInactive = true,
@@ -181,13 +189,5 @@ public sealed class Modifier : IPoolable, IConditional
         }
 
         return result;
-    }
-
-    public static float Calculate(
-        IReadOnlyList<Modifier> mods,
-        float baseValue = 0,
-        bool ignoreHidden = false)
-    {
-        return Calculate(mods, 0, baseValue, ignoreInactive: true, ignoreHidden);
     }
 }

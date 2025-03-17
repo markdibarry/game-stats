@@ -16,7 +16,6 @@ public static class ConditionDB
     private static readonly Dictionary<Type, Func<Condition>> s_createFuncs = [];
     private static readonly Dictionary<Type, string> s_ids = [];
     private static readonly List<JsonDerivedType> s_jsonDerivedTypes = [];
-    public static Action<JsonTypeInfo> ConditionModifier { get; } = ResolveCondition;
 
     public static void Register<T>(string typeId) where T : Condition, new()
     {
@@ -37,7 +36,7 @@ public static class ConditionDB
         return func();
     }
 
-    private static void ResolveCondition(JsonTypeInfo typeInfo)
+    public static void ResolveCondition(JsonTypeInfo typeInfo)
     {
         if (typeInfo.Type != typeof(Condition))
             return;

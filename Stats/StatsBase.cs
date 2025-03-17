@@ -7,57 +7,107 @@ namespace GameCore.Statistics;
 
 public abstract class StatsBase : IPoolable
 {
+    static StatsBase()
+    {
+        s_calculateDefault = (stats, stat, mods, ignoreHidden) =>
+        {
+            return Modifier.Calculate(mods, stat.BaseValue, ignoreHidden);
+        };
+        s_isStatusEffect = (stats, statTypeId) => false;
+        s_isImmuneToStatusEffect = (stats, statTypeId) => false;
+    }
+
+    private static readonly Dictionary<string, float> s_statDefault = [];
+    private static readonly Dictionary<string, string> s_statToCalculateType = [];
+    private static readonly Dictionary<string, CalculateDel> s_calculateTypeToDelegate = [];
+    private static readonly CalculateDel s_calculateDefault;
+    private static StatusEffectDel s_isStatusEffect;
+    private static StatusEffectDel s_isImmuneToStatusEffect;
+
     [JsonIgnore]
     public IStatsOwner? StatsOwner { get; private set; }
     protected Dictionary<string, Stat> StatLookup { get; } = [];
     protected Dictionary<string, StatusEffect> StatusEffects { get; } = [];
+    protected ModifierLookup ModifierLookup { get; } = [];
 
     public event Action<double>? ProcessTime;
     public event Action<StatsBase, string, ModChangeType>? ModChanged;
     public event Action<StatsBase, string, ModChangeType>? StatusEffectChanged;
 
+    public delegate float CalculateDel(StatsBase stats, Stat stat, List<Modifier> mods, bool ignoreHidden);
+    public delegate bool StatusEffectDel(StatsBase stats, string statTypeId);
+
+    public static void RegisterStatType(string statTypeId, float defaultValue = 0, string calculateType = "Default")
+    {
+        s_statDefault.Add(statTypeId, defaultValue);
+        s_statToCalculateType.Add(statTypeId, calculateType);
+    }
+
+    public static void RegisterCalculateType(string calculateType, CalculateDel? calculate = null)
+    {
+        calculate ??= s_calculateDefault;
+        s_calculateTypeToDelegate[calculateType] = calculate;
+    }
+
+    public static void SetIsStatusEffect(StatusEffectDel isStatusEffect)
+    {
+        s_isStatusEffect = isStatusEffect;
+    }
+
+    public static void SetIsImmuneToStatusEffect(StatusEffectDel isImmune)
+    {
+        s_isImmuneToStatusEffect = isImmune;
+    }
+
     public void ClearObject()
     {
         StatsOwner = null;
-        StatLookup.ClearObject();
+        ModifierLookup.ClearObject();
+        StatLookup.Clear();
         StatusEffects.ClearObject();
-        ClearData();
     }
-
-    protected abstract void ClearData();
 
     public T Clone<T>() where T : StatsBase, new()
     {
-        T clone = Pool.Get<T>();
-        clone.CopyData(this);
-        clone.Initialize(null, StatLookup, StatusEffects);
+        T clone = Create<T>(StatLookup, ModifierLookup, StatusEffects);
+        clone.Initialize(null);
         return clone;
     }
 
-    public void Initialize(
-        IStatsOwner? statsOwner,
+    public static T Create<T>(
         Dictionary<string, Stat> statLookup,
+        ModifierLookup modLookup,
         Dictionary<string, StatusEffect> statusEffects)
+        where T : StatsBase, new()
     {
-        StatsOwner = statsOwner;
+        T stats = Pool.Get<T>();
 
         foreach (KeyValuePair<string, StatusEffect> pair in statusEffects)
         {
             StatusEffect statusEffect = pair.Value.Clone();
-            statusEffect.Register(this);
-            StatusEffects.Add(statusEffect.StatTypeId, statusEffect);
+            stats.StatusEffects.Add(statusEffect.StatTypeId, statusEffect);
         }
 
-        statLookup.CloneTo(StatLookup);
-        AddDefaultStats();
-
-        foreach (var pair in StatLookup)
+        foreach (KeyValuePair<string, float> pair in s_statDefault)
         {
-            pair.Value.SortModifiers();
-
-            foreach (Modifier mod in pair.Value.Modifiers)
-                mod.Register(this, mod.Source);
+            if (statLookup.TryGetValue(pair.Key, out Stat stat))
+                stats.StatLookup[pair.Key] = stat;
+            else
+                stats.StatLookup[pair.Key] = new Stat(pair.Key, pair.Value);
         }
+
+        modLookup.Clone(stats.ModifierLookup, false);
+        return stats;
+    }
+
+    public void Initialize(IStatsOwner? statsOwner)
+    {
+        StatsOwner = statsOwner;
+
+        foreach (KeyValuePair<string, StatusEffect> pair in StatusEffects)
+            pair.Value.Register(this);
+
+        ModifierLookup.RegisterAll(this);
     }
 
     public void AddMod(Modifier sourceMod, bool clone = true)
@@ -92,37 +142,51 @@ public abstract class StatsBase : IPoolable
         AddModToStatLookup(newMod);
     }
 
-    public virtual float CalculateStat(string statTypeId, bool ignoreHidden = false)
+    public void CloneStatLookup(Dictionary<string, Stat> clone)
     {
-        return CalculateDefault(statTypeId, ignoreHidden);
+        clone.Clear();
+
+        foreach (var kvp in StatLookup)
+            clone.Add(kvp.Key, kvp.Value);
     }
 
-    public Dictionary<string, Stat> CloneStatLookup(bool ignoreModsWithSource = false)
+    public void CloneModifierLookup(ModifierLookup clone, bool ignoreModsWithSource = false)
     {
-        return StatLookup.Clone(ignoreModsWithSource);
+        ModifierLookup.Clone(clone, ignoreModsWithSource);
     }
 
-    public Dictionary<string, StatusEffect> CloneEffects()
+    public void CloneStatusEffects(Dictionary<string, StatusEffect> clone)
     {
-        Dictionary<string, StatusEffect> result = [];
+        clone.Clear();
 
         foreach (var pair in StatusEffects)
-        {
-            result.Add(pair.Key, pair.Value.Clone());
-        }
-
-        return result;
+            clone.Add(pair.Key, pair.Value.Clone());
     }
 
-    public Stat? GetStat(string statTypeId)
+    public Stat GetStat(string statTypeId)
     {
-        StatLookup.TryGetValue(statTypeId, out Stat? stat);
+        StatLookup.TryGetValue(statTypeId, out Stat stat);
         return stat;
+    }
+
+    public void SetStatBase(string statTypeId, float baseValue)
+    {
+        if (StatLookup.TryGetValue(statTypeId, out Stat stat))
+            StatLookup[statTypeId] = stat with { BaseValue = baseValue };
+    }
+
+    public void SetStatCurrent(string statTypeId, float currentValue)
+    {
+        if (StatLookup.TryGetValue(statTypeId, out Stat stat))
+            StatLookup[statTypeId] = stat with { CurrentValue = currentValue };
     }
 
     public IReadOnlyList<Modifier> GetModifiersByType(string statTypeId)
     {
-        return GetStat(statTypeId)?.Modifiers ?? [];
+        if (!ModifierLookup.TryGetValue(statTypeId, out List<Modifier>? mods))
+            mods = [];
+
+        return mods;
     }
 
     public bool HasStatusEffect(string statusEffectTypeId)
@@ -142,14 +206,8 @@ public abstract class StatsBase : IPoolable
     {
         string statTypeId = sourceMod.StatTypeId;
 
-        if (!StatLookup.TryGetValue(statTypeId, out Stat? stat))
+        if (!ModifierLookup.TryRemoveModBySource(sourceMod, source))
             return false;
-
-        if (!stat.TryRemoveModBySource(sourceMod, source))
-            return false;
-
-        if (stat.IsEmpty())
-            RemoveStat(stat);
 
         RaiseModChanged(statTypeId, ModChangeType.Remove);
         UpdateCustomStatType(statTypeId);
@@ -159,16 +217,13 @@ public abstract class StatsBase : IPoolable
 
     public bool TryRemoveMod(Modifier mod)
     {
-        if (!StatLookup.TryGetValue(mod.StatTypeId, out Stat? stat))
-            return false;
-
         // Use RemoveModBySource() to remove mod with source
         if (mod.Source is not null)
             return false;
 
         string statTypeId = mod.StatTypeId;
 
-        if (!stat.TryRemoveMod(mod))
+        if (!ModifierLookup.TryRemoveMod(mod))
             return false;
 
         RaiseModChanged(statTypeId, ModChangeType.Remove);
@@ -183,7 +238,7 @@ public abstract class StatsBase : IPoolable
             return false;
 
         RemoveSourcelessMods(statTypeId);
-        bool hasActiveMods = CalculateStat(statTypeId) > 0;
+        bool hasActiveMods = Calculate(statTypeId) > 0;
 
         if (hasActiveMods)
             return false;
@@ -203,43 +258,41 @@ public abstract class StatsBase : IPoolable
             UpdateStatusEffect(statTypeId);
     }
 
-    protected virtual void AddDefaultStats() { }
-
-    protected void AddDefaultStat(string statTypeId, float defaultValue)
+    public float Calculate(string statTypeId, bool ignoreHidden = false)
     {
-        AddDefaultStat(statTypeId, defaultValue, new());
-    }
-
-    protected void AddDefaultStat(string statTypeId, float defaultValue, Growth growth)
-    {
-        if (StatLookup.ContainsKey(statTypeId))
-            return;
-
-        Stat stat = Pool.Get<Stat>();
-        stat.StatTypeId = statTypeId;
-        stat.BaseValue = defaultValue;
-        stat.CurrentValue = defaultValue;
-        stat.Growth = growth;
-        StatLookup[statTypeId] = stat;
-    }
-
-    protected float CalculateDefault(string statTypeId, bool ignoreHidden)
-    {
-        if (!StatLookup.TryGetValue(statTypeId, out Stat? stat))
+        if (!StatLookup.TryGetValue(statTypeId, out Stat stat))
             return 0;
 
-        return stat.CalculateDefault(ignoreHidden);
+        if (!ModifierLookup.TryGetValue(statTypeId, out List<Modifier>? mods))
+            mods = [];
+
+        return Calculate(stat, mods, ignoreHidden);
     }
 
-    protected virtual bool IsStatusEffect(string statType) => false;
+    public float Calculate(Stat stat, List<Modifier> mods, bool ignoreHidden)
+    {
+        if (!s_statToCalculateType.TryGetValue(stat.StatTypeId, out string? calculateType)
+            || !s_calculateTypeToDelegate.TryGetValue(calculateType, out CalculateDel? func))
+        {
+            return s_calculateDefault(this, stat, mods, ignoreHidden);
+        }
 
-    protected virtual bool IsImmuneToStatusEffect(string statType) => false;
+        return func(this, stat, mods, ignoreHidden);
+    }
 
-    protected abstract void CopyData(StatsBase clone);
+    protected bool IsStatusEffect(string statType)
+    {
+        return s_isStatusEffect(this, statType);
+    }
+
+    public bool IsImmuneToStatusEffect(string statType)
+    {
+        return s_isImmuneToStatusEffect(this, statType);
+    }
 
     protected void UpdateStatusEffect(string statTypeId)
     {
-        bool hasActiveMods = CalculateStat(statTypeId) > 0;
+        bool hasActiveMods = Calculate(statTypeId) > 0;
 
         if (StatusEffects.ContainsKey(statTypeId))
         {
@@ -255,13 +308,7 @@ public abstract class StatsBase : IPoolable
 
     private void AddModToStatLookup(Modifier newMod)
     {
-        if (!StatLookup.TryGetValue(newMod.StatTypeId, out Stat? stat))
-        {
-            stat = Stat.Create(newMod.StatTypeId, 0);
-            StatLookup[newMod.StatTypeId] = stat;
-        }
-
-        stat.AddMod(newMod);
+        ModifierLookup.AddMod(newMod);
         UpdateCustomStatType(newMod.StatTypeId);
         ModChanged?.Invoke(this, newMod.StatTypeId, ModChangeType.Add);
     }
@@ -303,10 +350,7 @@ public abstract class StatsBase : IPoolable
     /// <returns></returns>
     private Modifier? GetFirstModifier(string statTypeId, bool hasSource)
     {
-        if (!StatLookup.TryGetValue(statTypeId, out Stat? stat))
-            return null;
-
-        return stat.GetFirstModifier(hasSource);
+        return ModifierLookup.GetFirstModifier(statTypeId, hasSource);
     }
 
     /// <summary>
@@ -407,20 +451,6 @@ public abstract class StatsBase : IPoolable
         }
     }
 
-    public void RemoveStat(string statTypeId)
-    {
-        if (!StatLookup.TryGetValue(statTypeId, out Stat? stat))
-            return;
-
-        RemoveStat(stat);
-    }
-
-    public void RemoveStat(Stat stat)
-    {
-        StatLookup.Remove(stat.StatTypeId);
-        stat.ReturnToPool();
-    }
-
     public void RaiseModChanged(string statTypeId, ModChangeType modChangeType)
     {
         ModChanged?.Invoke(this, statTypeId, modChangeType);
@@ -432,12 +462,6 @@ public abstract class StatsBase : IPoolable
     /// <param name="statTypeId"></param>
     private void RemoveSourcelessMods(string statTypeId)
     {
-        if (!StatLookup.TryGetValue(statTypeId, out Stat? stat))
-            return;
-
-        stat.RemoveSourcelessMods(this);
-
-        if (stat.IsEmpty())
-            RemoveStat(stat);
+        ModifierLookup.RemoveSourcelessMods(this, statTypeId);
     }
 }
