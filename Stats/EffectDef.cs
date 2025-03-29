@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace GameCore.Statistics;
 
@@ -6,11 +7,11 @@ public class EffectDef
 {
     public EffectDef(string statTypeId)
     {
-        StatTypeId = statTypeId;
+        EffectTypeId = statTypeId;
     }
 
-    public delegate void Effect(StatsBase stats, StatusEffect statusEffect);
-    public string StatTypeId { get; }
+    public delegate void Effect(Stats stats, StatusEffect statusEffect);
+    public string EffectTypeId { get; }
     public int MaxStack { get; init; } = 1;
     /// <summary>
     /// Controls how the status effect handles adding a new stack.
@@ -28,6 +29,14 @@ public class EffectDef
     public Effect? OnRemoveStack { get; private set; }
     public Effect? OnDeactivate { get; private set; }
     public List<Modifier> Modifiers { get; } = [];
+
+    public EffectDef AddModifier(Action<Modifier> func)
+    {
+        Modifier mod = Modifier.Create();
+        func(mod);
+        Modifiers.Add(mod);
+        return this;
+    }
 
     public EffectDef AddModifier(Modifier mod)
     {

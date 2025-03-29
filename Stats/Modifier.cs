@@ -7,8 +7,6 @@ namespace GameCore.Statistics;
 
 public sealed class Modifier : IPoolable, IConditional
 {
-    private bool _registered;
-
     [JsonPropertyOrder(0)]
     public string StatTypeId { get; set; } = string.Empty;
     [JsonPropertyOrder(1)]
@@ -24,7 +22,7 @@ public sealed class Modifier : IPoolable, IConditional
     [JsonIgnore]
     public object? Source { get; private set; }
     [JsonIgnore]
-    public StatsBase? Stats { get; private set; }
+    public Stats? Stats { get; private set; }
 
     public static Modifier Create() => Pool.Get<Modifier>();
 
@@ -68,7 +66,7 @@ public sealed class Modifier : IPoolable, IConditional
 
     public void ClearObject()
     {
-        Unregister();
+        Uninitialize();
         Duration?.ReturnToPool();
         Duration = default;
         IsActive = false;
@@ -106,15 +104,13 @@ public sealed class Modifier : IPoolable, IConditional
             IsActive = isActive;
 
             if (!IsActive && Source is null)
-                Stats?.TryRemoveMod(this);
-            else
-                Stats?.UpdateCustomStatType(StatTypeId);
+                Stats?.RemoveModByRef(this);
         }
     }
 
-    public void Register(StatsBase stats, object? source)
+    internal void Initialize(Stats stats, object? source)
     {
-        if (_registered || Stats is not null)
+        if (Stats is not null)
             return;
 
         Stats = stats;
@@ -123,24 +119,20 @@ public sealed class Modifier : IPoolable, IConditional
 
         if (Duration is not null)
         {
-            Duration.Register(this, null);
+            Duration.Initialize(this, null);
             IsActive = !Duration.CheckAllConditions(Source is not null);
         }
-
-        _registered = true;
     }
 
-    public void Unregister()
+    internal void Uninitialize()
     {
-        if (!_registered || Stats is null)
+        if (Stats is null)
             return;
 
-        Duration?.Unregister();
+        Duration?.Uninitialize();
         Stats = null;
         Source = null;
         IsActive = false;
-
-        _registered = false;
     }
 
     public static float Calculate(

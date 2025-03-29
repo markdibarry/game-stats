@@ -2,6 +2,6 @@ namespace GameCore.Statistics;
 
 public interface IConditional
 {
-    StatsBase? Stats { get; }
+    Stats? Stats { get; }
     void OnConditionChanged(Condition condition);
 }

@@ -13,14 +13,17 @@ public abstract class Condition : IPoolable
     public bool Not { get; set; }
     [JsonPropertyOrder(-3)]
     public bool ReupOnMet { get; set; }
+    /// <summary>
+    /// Ignore if Conditional has source
+    /// </summary>
     [JsonPropertyOrder(-2)]
-    public bool IgnoreModsWithSource { get; set; }
+    public bool SourceIgnored { get; set; }
     [JsonPropertyOrder(20)]
     public Condition? And { get; set; }
     [JsonPropertyOrder(21)]
     public Condition? Or { get; set; }
     [JsonIgnore]
-    public StatsBase? Stats => Conditional.Stats;
+    public Stats? Stats => Conditional.Stats;
     [JsonIgnore]
     public bool Registered { get; private set; }
     protected IConditional Conditional { get; private set; } = null!;
@@ -34,7 +37,7 @@ public abstract class Condition : IPoolable
 
     public bool CheckAllConditions(bool hasSource = false)
     {
-        if (_result && !(IgnoreModsWithSource && hasSource))
+        if (_result && !(SourceIgnored && hasSource))
             return And?.CheckAllConditions(hasSource) ?? true;
         else
             return Or?.CheckAllConditions(hasSource) ?? false;
@@ -74,7 +77,7 @@ public abstract class Condition : IPoolable
         Conditional = null!;
         ReupOnMet = false;
         Not = false;
-        IgnoreModsWithSource = false;
+        SourceIgnored = false;
         ClearData();
     }
 
@@ -98,7 +101,7 @@ public abstract class Condition : IPoolable
 
         clone.ReupOnMet = ReupOnMet;
         clone.Not = Not;
-        clone.IgnoreModsWithSource = IgnoreModsWithSource;
+        clone.SourceIgnored = SourceIgnored;
         clone.CopyData(this);
         return clone;
     }
@@ -125,7 +128,7 @@ public abstract class Condition : IPoolable
         ResetData();
     }
 
-    public void Register(IConditional owner, Condition? parent)
+    public void Initialize(IConditional owner, Condition? parent)
     {
         if (Registered)
             return;
@@ -133,20 +136,20 @@ public abstract class Condition : IPoolable
         _parent = parent;
         Conditional = owner;
         SubscribeEvents();
-        And?.Register(owner, this);
-        Or?.Register(owner, this);
+        And?.Initialize(owner, this);
+        Or?.Initialize(owner, this);
         UpdateCondition();
         Registered = true;
     }
 
-    public void Unregister()
+    public void Uninitialize()
     {
         if (!Registered)
             return;
 
         UnsubscribeEvents();
-        And?.Unregister();
-        Or?.Unregister();
+        And?.Uninitialize();
+        Or?.Uninitialize();
         _parent = null;
         Conditional = null!;
         Registered = false;
@@ -219,9 +222,16 @@ public static class ConditionExtensions
         return condition;
     }
 
-    public static T SetIgnoreModsWithSource<T>(this T condition, bool enable) where T : Condition
+    /// <summary>
+    /// Sets if this condition should be ignored when the Conditional has a source.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="condition"></param>
+    /// <param name="enable"></param>
+    /// <returns></returns>
+    public static T SetSourceIgnored<T>(this T condition, bool enable) where T : Condition
     {
-        condition.IgnoreModsWithSource = enable;
+        condition.SourceIgnored = enable;
         return condition;
     }
 
