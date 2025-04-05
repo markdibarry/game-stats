@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
-using GameCore.Utility;
 
 namespace GameCore.Statistics;
 
-public class Stats : IPoolable
+public class Stats : IStatsPoolable
 {
     static Stats()
     {
@@ -21,20 +20,23 @@ public class Stats : IPoolable
     private static readonly Dictionary<string, ModifyDel> s_statToModifyDelegate = [];
     private static readonly CalculateDel s_calculateDefault;
     private static StatusEffectDel s_isImmuneToStatusEffect;
+    private static readonly List<TimedCondition> s_conditionsToRemove = [];
+
+    private readonly List<TimedCondition> _conditionsToProcess = [];
+    private bool _isProcessing;
 
     [JsonIgnore]
     public object? StatsOwner { get; private set; }
     protected Dictionary<string, Stat> StatLookup { get; } = [];
-    protected ModifierLookup ModifierLookup { get; } = [];
+    protected ModifierLookup Modifiers { get; } = [];
     protected EffectLookup StatusEffects { get; } = [];
 
-    public event Action<double>? ProcessTime;
     public event Action<Stats, string>? StatChanged;
     public event Action<Stats, string>? StatusEffectChanged;
 
     public delegate void ModifyDel(Stats stats, string statTypeId);
     public delegate float CalculateDel(Stats stats, Stat stat, List<Modifier> mods, bool ignoreHidden);
-    public delegate bool StatusEffectDel(Stats stats, StatusEffect statusEffect);
+    public delegate bool StatusEffectDel(Stats stats, string effectTypeId);
 
     public static EffectDef RegisterEffect(string effectTypeId)
     {
@@ -79,14 +81,14 @@ public class Stats : IPoolable
     public void ClearObject()
     {
         StatsOwner = null;
-        ModifierLookup.ClearObject();
+        Modifiers.ClearObject();
         StatLookup.Clear();
         StatusEffects.ClearObject();
     }
 
     public Stats Clone()
     {
-        Stats clone = Create(StatLookup, ModifierLookup, StatusEffects);
+        Stats clone = Create(StatLookup, Modifiers, StatusEffects);
         clone.Initialize(null);
         return clone;
     }
@@ -101,7 +103,7 @@ public class Stats : IPoolable
 
     public void CopyModifierLookupTo(ModifierLookup clone, bool ignoreModsWithSource = false)
     {
-        ModifierLookup.CopyTo(clone, ignoreModsWithSource);
+        Modifiers.CopyTo(clone, ignoreModsWithSource);
     }
 
     public void CopyStatusEffectsTo(EffectLookup clone)
@@ -114,7 +116,7 @@ public class Stats : IPoolable
         ModifierLookup modLookup,
         EffectLookup statusEffects)
     {
-        Stats stats = Pool.Get<Stats>();
+        Stats stats = StatsPool.Get<Stats>();
 
         foreach (KeyValuePair<string, float> pair in s_statDefault)
         {
@@ -124,7 +126,7 @@ public class Stats : IPoolable
                 stats.StatLookup[pair.Key] = new Stat(pair.Value);
         }
 
-        modLookup.CopyTo(stats.ModifierLookup, false);
+        modLookup.CopyTo(stats.Modifiers, false);
         statusEffects.CopyTo(stats.StatusEffects);
         return stats;
     }
@@ -132,49 +134,68 @@ public class Stats : IPoolable
     public void Initialize(object? statsOwner)
     {
         StatsOwner = statsOwner;
-        ModifierLookup.InitializeAll(this);
+        Modifiers.InitializeAll(this);
         StatusEffects.InitializeAll(this);
     }
 
     public Stat GetStat(string statTypeId)
     {
-        StatLookup.TryGetValue(statTypeId, out Stat stat);
+        if (StatLookup.TryGetValue(statTypeId, out Stat stat))
+            return stat;
+
+        if (s_statDefault.TryGetValue(statTypeId, out float defaultValue))
+            return new Stat(defaultValue);
+
         return stat;
     }
 
     public void SetStatBase(string statTypeId, float baseValue)
     {
-        if (StatLookup.TryGetValue(statTypeId, out Stat stat))
-        {
-            StatLookup[statTypeId] = stat with { BaseValue = baseValue };
-            RaiseStatChanged(statTypeId);
-            TryCallModifyDel(statTypeId);
-        }
+        Stat stat = GetStat(statTypeId);
+        StatLookup[statTypeId] = stat with { BaseValue = baseValue };
+        RaiseStatChanged(statTypeId);
+        TryCallModifyDel(statTypeId);
     }
 
     public void SetStatCurrent(string statTypeId, float currentValue)
     {
-        if (StatLookup.TryGetValue(statTypeId, out Stat stat))
-        {
-            StatLookup[statTypeId] = stat with { CurrentValue = currentValue };
-            RaiseStatChanged(statTypeId);
-            TryCallModifyDel(statTypeId);
-        }
+        Stat stat = GetStat(statTypeId);
+        StatLookup[statTypeId] = stat with { CurrentValue = currentValue };
+        RaiseStatChanged(statTypeId);
+        TryCallModifyDel(statTypeId);
+    }
+
+    public float Calculate(string statTypeId, bool ignoreHidden = false)
+    {
+        Stat stat = GetStat(statTypeId);
+
+        if (!Modifiers.TryGetValue(statTypeId, out List<Modifier>? mods))
+            mods = [];
+
+        if (!s_statToCalculateDel.TryGetValue(statTypeId, out CalculateDel? func))
+            return s_calculateDefault(this, stat, mods, ignoreHidden);
+
+        return func(this, stat, mods, ignoreHidden);
     }
 
     public void AddModNoCopy(Modifier sourceMod, object? source)
     {
-        ModifierLookup.AddMod(this, sourceMod, source, false);
+        Modifiers.AddMod(this, sourceMod, source, false);
     }
 
     public void AddMod(Modifier sourceMod, object? source)
     {
-        ModifierLookup.AddMod(this, sourceMod, source, true);
+        Modifiers.AddMod(this, sourceMod, source, true);
+    }
+
+    public ModifierLookup GetModifiersUnsafe()
+    {
+        return Modifiers;
     }
 
     public IReadOnlyList<Modifier> GetModifiersByType(string statTypeId)
     {
-        if (!ModifierLookup.TryGetValue(statTypeId, out List<Modifier>? mods))
+        if (!Modifiers.TryGetValue(statTypeId, out List<Modifier>? mods))
             mods = [];
 
         return mods;
@@ -182,12 +203,17 @@ public class Stats : IPoolable
 
     public void RemoveMod(string statTypeId, object? source)
     {
-        ModifierLookup.RemoveModBySource(this, statTypeId, source);
+        Modifiers.RemoveModBySource(this, statTypeId, source);
     }
 
     public void RemoveModByRef(Modifier mod)
     {
-        ModifierLookup.RemoveMod(this, mod);
+        Modifiers.RemoveMod(this, mod);
+    }
+
+    public EffectLookup GetStatusEffectsUnsafe()
+    {
+        return StatusEffects;
     }
 
     public bool HasStatusEffect(string effectTypeId)
@@ -222,15 +248,7 @@ public class Stats : IPoolable
 
     public bool IsImmuneToStatusEffect(string effectTypeId)
     {
-        if (!StatusEffects.TryGetValue(effectTypeId, out StatusEffect? statusEffect))
-            return false;
-
-        return IsImmuneToStatusEffect(statusEffect);
-    }
-
-    public bool IsImmuneToStatusEffect(StatusEffect statusEffect)
-    {
-        return s_isImmuneToStatusEffect(this, statusEffect);
+        return s_isImmuneToStatusEffect(this, effectTypeId);
     }
 
     public void UpdateStatusEffect(string effectTypeId)
@@ -242,24 +260,37 @@ public class Stats : IPoolable
         StatusEffects.UpdateActive(this, statusEffect, effectDef);
     }
 
-    public float Calculate(string statTypeId, bool ignoreHidden = false)
+    /// <summary>
+    /// Processes timer conditions.
+    /// </summary>
+    /// <param name="delta"></param>
+    public void Process(double delta)
     {
-        if (!StatLookup.TryGetValue(statTypeId, out Stat stat))
-            return 0;
+        // Found it 2-8 times faster (depending on the amount of timers) and with no allocation to
+        // manage the conditions manually vs via events.
+        _isProcessing = true;
 
-        if (!ModifierLookup.TryGetValue(statTypeId, out List<Modifier>? mods))
-            mods = [];
+        foreach (TimedCondition condition in _conditionsToProcess)
+            condition.OnProcess(delta);
 
-        if (!s_statToCalculateDel.TryGetValue(statTypeId, out CalculateDel? func))
-            return s_calculateDefault(this, stat, mods, ignoreHidden);
+        foreach (TimedCondition condition in s_conditionsToRemove)
+            _conditionsToProcess.Remove(condition);
 
-        return func(this, stat, mods, ignoreHidden);
+        s_conditionsToRemove.Clear();
+        _isProcessing = false;
     }
 
-    public void Process(double delta, bool processTime)
+    protected internal void AddTimedCondition(TimedCondition timedCondition)
     {
-        if (processTime)
-            ProcessTime?.Invoke(delta);
+        _conditionsToProcess.Add(timedCondition);
+    }
+
+    protected internal void RemoveTimedCondition(TimedCondition timedCondition)
+    {
+        if (_isProcessing)
+            s_conditionsToRemove.Add(timedCondition);
+        else
+            _conditionsToProcess.Remove(timedCondition);
     }
 
     public void RaiseStatChanged(string statTypeId)
@@ -274,9 +305,9 @@ public class Stats : IPoolable
 
     private void TryCallModifyDel(string statTypeId)
     {
-        if (!s_statToModifyDelegate.TryGetValue(statTypeId, out var func))
+        if (!s_statToModifyDelegate.TryGetValue(statTypeId, out ModifyDel? modify))
             return;
 
-        func(this, statTypeId);
+        modify(this, statTypeId);
     }
 }

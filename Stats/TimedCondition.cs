@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Text.Json.Serialization;
-using GameCore.Utility;
 
 namespace GameCore.Statistics;
 
@@ -13,7 +12,7 @@ public sealed class TimedCondition : Condition
 
     public static TimedCondition Create(float duration, bool reupOnMet = false)
     {
-        TimedCondition timedCondition = Pool.Get<TimedCondition>();
+        TimedCondition timedCondition = StatsPool.Get<TimedCondition>();
         timedCondition.TimeLeft = duration;
         timedCondition.Duration = duration;
         timedCondition.ReupOnMet = reupOnMet;
@@ -42,14 +41,12 @@ public sealed class TimedCondition : Condition
 
     protected override void SubscribeEvents()
     {
-        if (Stats is not null)
-            Stats.ProcessTime += OnProcess;
+        Stats?.AddTimedCondition(this);
     }
 
     protected override void UnsubscribeEvents()
     {
-        if (Stats is not null)
-            Stats.ProcessTime -= OnProcess;
+        Stats?.RemoveTimedCondition(this);
     }
 
     protected override bool Evaluate() => TimeLeft <= 0;

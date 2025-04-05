@@ -1,14 +1,16 @@
 ﻿using System;
 using System.Text.Json.Serialization;
-using GameCore.Utility;
 
 namespace GameCore.Statistics;
 
-public abstract class Condition : IPoolable
+public abstract class Condition : IStatsPoolable
 {
-    private bool _result;
     private Condition? _parent;
 
+    protected IConditional? Conditional { get; private set; }
+
+    [JsonIgnore]
+    public bool Result { get; private set; }
     [JsonPropertyOrder(-4)]
     public bool Not { get; set; }
     [JsonPropertyOrder(-3)]
@@ -23,21 +25,18 @@ public abstract class Condition : IPoolable
     [JsonPropertyOrder(21)]
     public Condition? Or { get; set; }
     [JsonIgnore]
-    public Stats? Stats => Conditional.Stats;
-    [JsonIgnore]
-    public bool Registered { get; private set; }
-    protected IConditional Conditional { get; private set; } = null!;
+    public Stats? Stats => Conditional?.Stats;
 
     public static T Create<T>(Action<T> setup) where T : Condition, new()
     {
-        T cond = Pool.Get<T>();
+        T cond = StatsPool.Get<T>();
         setup(cond);
         return cond;
     }
 
     public bool CheckAllConditions(bool hasSource = false)
     {
-        if (_result && !(SourceIgnored && hasSource))
+        if (Result && !(SourceIgnored && hasSource))
             return And?.CheckAllConditions(hasSource) ?? true;
         else
             return Or?.CheckAllConditions(hasSource) ?? false;
@@ -59,7 +58,7 @@ public abstract class Condition : IPoolable
 
     public void ClearObject()
     {
-        _result = false;
+        Result = false;
         _parent = null;
 
         if (And is not null)
@@ -74,7 +73,7 @@ public abstract class Condition : IPoolable
             Or = null;
         }
 
-        Conditional = null!;
+        Conditional = null;
         ReupOnMet = false;
         Not = false;
         SourceIgnored = false;
@@ -96,7 +95,7 @@ public abstract class Condition : IPoolable
 
     public Condition CloneSingle()
     {
-        if (Pool.GetSameTypeOrNull(this) is not Condition clone)
+        if (StatsPool.GetSameTypeOrNull(this) is not Condition clone)
             clone = ConditionDB.GetNew(this);
 
         clone.ReupOnMet = ReupOnMet;
@@ -130,7 +129,7 @@ public abstract class Condition : IPoolable
 
     public void Initialize(IConditional owner, Condition? parent)
     {
-        if (Registered)
+        if (Conditional != null)
             return;
 
         _parent = parent;
@@ -139,20 +138,18 @@ public abstract class Condition : IPoolable
         And?.Initialize(owner, this);
         Or?.Initialize(owner, this);
         UpdateCondition();
-        Registered = true;
     }
 
     public void Uninitialize()
     {
-        if (!Registered)
+        if (Conditional == null)
             return;
 
         UnsubscribeEvents();
         And?.Uninitialize();
         Or?.Uninitialize();
         _parent = null;
-        Conditional = null!;
-        Registered = false;
+        Conditional = null;
     }
 
     protected abstract void SubscribeEvents();
@@ -189,9 +186,9 @@ public abstract class Condition : IPoolable
         if (Not)
             result = !result;
 
-        if (result != _result)
+        if (result != Result)
         {
-            _result = result;
+            Result = result;
             return true;
         }
 
@@ -204,7 +201,7 @@ public abstract class Condition : IPoolable
             return;
 
         Condition condition = GetHeadCondition();
-        Conditional.OnConditionChanged(condition);
+        Conditional?.OnConditionChanged(condition);
     }
 }
 

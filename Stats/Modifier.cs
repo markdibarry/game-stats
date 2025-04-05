@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
-using GameCore.Utility;
 
 namespace GameCore.Statistics;
 
-public sealed class Modifier : IPoolable, IConditional
+public sealed class Modifier : IStatsPoolable, IConditional
 {
     [JsonPropertyOrder(0)]
     public string StatTypeId { get; set; } = string.Empty;
@@ -24,7 +23,7 @@ public sealed class Modifier : IPoolable, IConditional
     [JsonIgnore]
     public Stats? Stats { get; private set; }
 
-    public static Modifier Create() => Pool.Get<Modifier>();
+    public static Modifier Create() => StatsPool.Get<Modifier>();
 
     public static Modifier Create(Action<Modifier> action)
     {
@@ -52,7 +51,7 @@ public sealed class Modifier : IPoolable, IConditional
         bool isHidden,
         object? source)
     {
-        Modifier mod = Pool.Get<Modifier>();
+        Modifier mod = StatsPool.Get<Modifier>();
         mod.StatTypeId = statTypeId;
         mod.Op = op;
         mod.Value = value;
@@ -62,7 +61,7 @@ public sealed class Modifier : IPoolable, IConditional
         return mod;
     }
 
-    public float Apply(float baseValue) => OpDB.Compute(this, baseValue);
+    public float Apply(float baseValue) => StatOps.Compute(this, baseValue);
 
     public void ClearObject()
     {
@@ -167,7 +166,7 @@ public sealed class Modifier : IPoolable, IConditional
             if ((ignoreInactive && !mod.IsActive) || (ignoreHidden && mod.IsHidden))
                 continue;
 
-            if (mod.Op != OpDB.PercentAdd)
+            if (mod.Op != StatOps.AddPercent)
             {
                 result = mod.Apply(result);
                 continue;
@@ -176,7 +175,7 @@ public sealed class Modifier : IPoolable, IConditional
             percentToAdd = mod.Apply(percentToAdd);
 
             // Is last percent mod
-            if (i + 1 == mods.Count || mods[i + 1].Op != OpDB.PercentAdd)
+            if (i + 1 == mods.Count || mods[i + 1].Op != StatOps.AddPercent)
                 result *= 1 + percentToAdd;
         }
 

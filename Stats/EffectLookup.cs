@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using GameCore.Utility;
 
 namespace GameCore.Statistics;
 
@@ -38,7 +37,14 @@ public class EffectLookup : Dictionary<string, StatusEffect>
     internal void InitializeAll(Stats stats)
     {
         foreach (StatusEffect statusEffect in Values)
+        {
+            foreach (var stack in statusEffect.Stacks)
+                stack.Initialize(stats, null);
+
+            bool isImmune = stats.IsImmuneToStatusEffect(statusEffect.EffectTypeId);
+            statusEffect.IsActive = !isImmune && statusEffect.HasActiveStacks();
             statusEffect.Initialize(stats);
+        }
     }
 
     internal void AddStack(Stats stats, EffectStack sourceStack, object? source, bool clone)
@@ -182,19 +188,25 @@ public class EffectLookup : Dictionary<string, StatusEffect>
 
     internal void UpdateActive(Stats stats, StatusEffect statusEffect, EffectDef effectDef)
     {
+        string effectTypeId = statusEffect.EffectTypeId;
         bool wasActive = statusEffect.IsActive;
-        bool isImmune = stats.IsImmuneToStatusEffect(statusEffect.EffectTypeId);
+        bool isImmune = stats.IsImmuneToStatusEffect(effectTypeId);
         statusEffect.IsActive = !isImmune && statusEffect.HasActiveStacks();
 
         if (!wasActive && statusEffect.IsActive)
         {
             effectDef.OnActivate?.Invoke(stats, statusEffect);
-            stats.RaiseStatusEffectChanged(statusEffect.EffectTypeId);
+            stats.RaiseStatusEffectChanged(effectTypeId);
         }
         else if (wasActive && !statusEffect.IsActive)
         {
             effectDef.OnDeactivate?.Invoke(stats, statusEffect);
-            stats.RaiseStatusEffectChanged(statusEffect.EffectTypeId);
+
+            if (statusEffect.Stacks.Count == 0)
+                RemoveStatusEffect(statusEffect);
+
+            stats.RaiseStatusEffectChanged(effectTypeId);
+            return;
         }
 
         if (statusEffect.Stacks.Count == 0)
