@@ -20,10 +20,8 @@ public class Stats : IStatsPoolable
     private static readonly Dictionary<string, ModifyDel> s_statToModifyDelegate = [];
     private static readonly CalculateDel s_calculateDefault;
     private static StatusEffectDel s_isImmuneToStatusEffect;
-    private static readonly List<TimedCondition> s_conditionsToRemove = [];
 
-    private readonly List<TimedCondition> _conditionsToProcess = [];
-    private bool _isProcessing;
+    private readonly HashSet<TimedCondition> _conditionsToProcess = [];
 
     [JsonIgnore]
     public object? StatsOwner { get; private set; }
@@ -33,9 +31,10 @@ public class Stats : IStatsPoolable
 
     public event Action<Stats, string>? StatChanged;
     public event Action<Stats, string>? StatusEffectChanged;
+    public event Action<Stats, string>? EffectStackChanged;
 
     public delegate void ModifyDel(Stats stats, string statTypeId);
-    public delegate float CalculateDel(Stats stats, Stat stat, List<Modifier> mods, bool ignoreHidden);
+    public delegate float CalculateDel(Stats stats, Stat stat, IReadOnlyList<Modifier> mods, bool ignoreHidden);
     public delegate bool StatusEffectDel(Stats stats, string effectTypeId);
 
     public static EffectDef RegisterEffect(string effectTypeId)
@@ -165,12 +164,16 @@ public class Stats : IStatsPoolable
         TryCallModifyDel(statTypeId);
     }
 
+    /// <summary>
+    /// Calculates all stats and modifiers of the provided type.
+    /// </summary>
+    /// <param name="statTypeId">The stat type identifier</param>
+    /// <param name="ignoreHidden">If true, ignores modifiers with the IsHidden flag</param>
+    /// <returns>The result of the calculation</returns>
     public float Calculate(string statTypeId, bool ignoreHidden = false)
     {
         Stat stat = GetStat(statTypeId);
-
-        if (!Modifiers.TryGetValue(statTypeId, out List<Modifier>? mods))
-            mods = [];
+        IReadOnlyList<Modifier> mods = GetModifiersOrEmpty(statTypeId);
 
         if (!s_statToCalculateDel.TryGetValue(statTypeId, out CalculateDel? func))
             return s_calculateDefault(this, stat, mods, ignoreHidden);
@@ -178,14 +181,21 @@ public class Stats : IStatsPoolable
         return func(this, stat, mods, ignoreHidden);
     }
 
-    public void AddModNoCopy(Modifier sourceMod, object? source)
+    /// <summary>
+    /// Adds a Modifier.
+    /// </summary>
+    /// <remarks>
+    /// If the modifier is self-managed, supply null as the source.
+    /// <br/>
+    /// If the modifier provided is meant to be reused, clone the modifier using Modifier.Clone().
+    /// </remarks>
+    /// <param name="mod">The modifier to be added.</param>
+    /// <param name="source">The source the modifier is tied to.</param>
+    public void AddMod(Modifier mod, object? source)
     {
-        Modifiers.AddMod(this, sourceMod, source, false);
-    }
-
-    public void AddMod(Modifier sourceMod, object? source)
-    {
-        Modifiers.AddMod(this, sourceMod, source, true);
+        string statTypeId = mod.StatTypeId;
+        Modifiers.AddMod(this, mod, source);
+        TryCallModifyDel(statTypeId);
     }
 
     public ModifierLookup GetModifiersUnsafe()
@@ -195,20 +205,37 @@ public class Stats : IStatsPoolable
 
     public IReadOnlyList<Modifier> GetModifiersByType(string statTypeId)
     {
-        if (!Modifiers.TryGetValue(statTypeId, out List<Modifier>? mods))
-            mods = [];
-
-        return mods;
+        return GetModifiersOrEmpty(statTypeId);
     }
 
+    private IReadOnlyList<Modifier> GetModifiersOrEmpty(string statTypeId)
+    {
+        if (!Modifiers.TryGetValue(statTypeId, out List<Modifier>? list))
+            return Array.Empty<Modifier>();
+
+        return list;
+    }
+
+    /// <summary>
+    /// Removes all modifiers matching the type and source provided.
+    /// </summary>
+    /// <param name="statTypeId">The stat type identifier</param>
+    /// <param name="source">The source to match to</param>
     public void RemoveMod(string statTypeId, object? source)
     {
         Modifiers.RemoveModBySource(this, statTypeId, source);
+        TryCallModifyDel(statTypeId);
     }
 
+    /// <summary>
+    /// Removes a modifier by reference.
+    /// </summary>
+    /// <param name="mod">The modifier to remove</param>
     public void RemoveModByRef(Modifier mod)
     {
+        string statTypeId = mod.StatTypeId;
         Modifiers.RemoveMod(this, mod);
+        TryCallModifyDel(statTypeId);
     }
 
     public EffectLookup GetStatusEffectsUnsafe()
@@ -216,48 +243,96 @@ public class Stats : IStatsPoolable
         return StatusEffects;
     }
 
+    /// <summary>
+    /// If true, a StatusEffect matching the effect type Id provided is currently active.
+    /// </summary>
+    /// <param name="effectTypeId">The effect type identifier</param>
+    /// <returns></returns>
     public bool HasStatusEffect(string effectTypeId)
     {
         return StatusEffects.IsActive(effectTypeId);
     }
 
-    public void AddStackNoCopy(EffectStack stack, object? source)
-    {
-        StatusEffects.AddStack(this, stack, source, false);
-    }
-
+    /// <summary>
+    /// Adds an EffectStack to a StatusEffect of the same type.
+    /// </summary>
+    /// <remarks>
+    /// If the stack is self-managed, supply null as the source.
+    /// <br/>
+    /// If the stack provided is meant to be reused, clone the stack using EffectStack.Clone().
+    /// </remarks>
+    /// <param name="stack">The stack to be added.</param>
+    /// <param name="source">The source the stack is tied to.</param>
     public void AddStack(EffectStack stack, object? source)
     {
-        StatusEffects.AddStack(this, stack, source, true);
+        StatusEffects.AddStack(this, stack, source);
     }
 
-    public void RemoveStackByRef(EffectStack stack)
-    {
-        StatusEffects.RemoveStack(this, stack);
-    }
-
+    /// <summary>
+    /// Removes all stacks matching the type and source provided.
+    /// </summary>
+    /// <param name="effectTypeId">The effect type identifier</param>
+    /// <param name="source">The source to match to</param>
     public void RemoveStack(string effectTypeId, object source)
     {
-        StatusEffects.RemoveStacksBySource(this, effectTypeId, source);
+        StatusEffects.RemoveStacksBySource(effectTypeId, source);
     }
 
+    /// <summary>
+    /// Removes a stack by reference.
+    /// </summary>
+    /// <param name="stack">The stack to remove</param>
+    public void RemoveStackByRef(EffectStack stack)
+    {
+        StatusEffects.RemoveStackByRef(stack);
+    }
+
+    /// <summary>
+    /// Removes all self-managed stacks associated with the StatusEffect.
+    /// </summary>
+    /// <remarks>
+    /// Note: Does not remove stacks with sources.
+    /// </remarks>
+    /// <param name="effectTypeId"></param>
     public void RemoveStatusEffect(string effectTypeId)
     {
-        StatusEffects.RemoveStacksBySource(this, effectTypeId, null);
+        StatusEffects.RemoveStacksBySource(effectTypeId, null);
     }
 
+    /// <summary>
+    /// Finds any stacks with the provided source, removes them, and adds a new stack.
+    /// </summary>
+    /// <param name="oldSource">The source to match when removing</param>
+    /// <param name="newStack">The new stack to add</param>
+    /// <param name="newSource">The source the new stack should be tied to</param>
+    public void ReplaceStack(object oldSource, EffectStack newStack, object? newSource)
+    {
+        StatusEffects.ReplaceStack(this, oldSource, newStack, newSource);
+    }
+
+    /// <summary>
+    /// If true, the user is immune to the provided status effect type.
+    /// </summary>
+    /// <remarks>
+    /// Note: If SetIsImmuneToStatusEffect() is not called on configuration, this will always return false.
+    /// </remarks>
+    /// <param name="effectTypeId"></param>
+    /// <returns></returns>
     public bool IsImmuneToStatusEffect(string effectTypeId)
     {
         return s_isImmuneToStatusEffect(this, effectTypeId);
     }
 
+    /// <summary>
+    /// Manually checks and updates whether a StatusEffect's active status.
+    /// </summary>
+    /// <param name="effectTypeId">The effect type identifier</param>
     public void UpdateStatusEffect(string effectTypeId)
     {
-        if (!StatusEffects.TryGetValue(effectTypeId, out StatusEffect? statusEffect)
-           || !EffectDefDB.TryGetValue(effectTypeId, out EffectDef? effectDef))
+        if (!StatusEffects.TryGetValue(effectTypeId, out StatusEffect? statusEffect))
             return;
 
-        StatusEffects.UpdateActive(this, statusEffect, effectDef);
+        statusEffect.UpdateActive(this);
     }
 
     /// <summary>
@@ -266,18 +341,8 @@ public class Stats : IStatsPoolable
     /// <param name="delta"></param>
     public void Process(double delta)
     {
-        // Found it 2-8 times faster (depending on the amount of timers) and with no allocation to
-        // manage the conditions manually vs via events.
-        _isProcessing = true;
-
         foreach (TimedCondition condition in _conditionsToProcess)
-            condition.OnProcess(delta);
-
-        foreach (TimedCondition condition in s_conditionsToRemove)
-            _conditionsToProcess.Remove(condition);
-
-        s_conditionsToRemove.Clear();
-        _isProcessing = false;
+            condition.OnProcess(this, delta);
     }
 
     protected internal void AddTimedCondition(TimedCondition timedCondition)
@@ -287,10 +352,7 @@ public class Stats : IStatsPoolable
 
     protected internal void RemoveTimedCondition(TimedCondition timedCondition)
     {
-        if (_isProcessing)
-            s_conditionsToRemove.Add(timedCondition);
-        else
-            _conditionsToProcess.Remove(timedCondition);
+        _conditionsToProcess.Remove(timedCondition);
     }
 
     public void RaiseStatChanged(string statTypeId)
@@ -301,6 +363,11 @@ public class Stats : IStatsPoolable
     public void RaiseStatusEffectChanged(string effectTypeId)
     {
         StatusEffectChanged?.Invoke(this, effectTypeId);
+    }
+
+    public void RaiseEffectStackChanged(string effectTypeId)
+    {
+        EffectStackChanged?.Invoke(this, effectTypeId);
     }
 
     private void TryCallModifyDel(string statTypeId)

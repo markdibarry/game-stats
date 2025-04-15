@@ -36,9 +36,9 @@ public class ModifierLookup : Dictionary<string, List<Modifier>>
         Clear();
     }
 
-    internal void AddMod(Stats stats, Modifier sourceMod, object? source, bool clone)
+    internal void AddMod(Stats stats, Modifier sourceMod, object? source)
     {
-        Modifier mod = clone ? sourceMod.Clone() : sourceMod;
+        Modifier mod = sourceMod;
         mod.Initialize(stats, source);
 
         if (source is null && !mod.IsActive)

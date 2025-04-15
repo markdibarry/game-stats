@@ -38,178 +38,98 @@ public class EffectLookup : Dictionary<string, StatusEffect>
     {
         foreach (StatusEffect statusEffect in Values)
         {
-            foreach (var stack in statusEffect.Stacks)
-                stack.Initialize(stats, null);
-
             bool isImmune = stats.IsImmuneToStatusEffect(statusEffect.EffectTypeId);
-            statusEffect.IsActive = !isImmune && statusEffect.HasActiveStacks();
-            statusEffect.Initialize(stats);
+            statusEffect.Initialize(stats, null, isImmune);
         }
     }
 
-    internal void AddStack(Stats stats, EffectStack sourceStack, object? source, bool clone)
+    internal void AddStack(Stats stats, EffectStack stack, object? source)
     {
-        if (!EffectDefDB.TryGetValue(sourceStack.EffectTypeId, out EffectDef? effectDef))
+        if (!EffectDefDB.TryGetValue(stack.EffectTypeId, out EffectDef? effectDef))
             return;
-
-        EffectStack stack = clone ? sourceStack.Clone() : sourceStack;
 
         // Copy global duration if available
         if (stack.Duration is null && effectDef.DefaultDuration is not null)
             stack.Duration = effectDef.DefaultDuration.Clone();
 
-        // Must register to check if active
-        stack.Initialize(stats, source);
+        bool isActive = !stack.Duration?.EvaluateAllConditions(stats, false) ?? true;
+        bool isImmune = stats.IsImmuneToStatusEffect(stack.EffectTypeId);
+        bool shouldAddNew = isActive && !isImmune;
 
-        if (stack.Source is null && (!stack.IsActive || stats.IsImmuneToStatusEffect(stack.EffectTypeId)))
+        if (source is null && !shouldAddNew)
         {
-            stack.Uninitialize();
             stack.ReturnToPool();
+            return;
         }
 
-        if (TryGetValue(stack.EffectTypeId, out StatusEffect? statusEffect))
-            UpdateStatusEffect(stats, statusEffect, stack, effectDef);
+        if (!TryGetValue(stack.EffectTypeId, out StatusEffect? statusEffect))
+        {
+            statusEffect = StatusEffect.Create(effectDef);
+            statusEffect.Initialize(stats, source, isImmune);
+            Add(stack.EffectTypeId, statusEffect);
+        }
+
+        statusEffect.AddStack(stats, stack, source);
+    }
+
+    internal void ReplaceStack(Stats stats, object oldSource, EffectStack newStack, object? newSource)
+    {
+        if (!EffectDefDB.TryGetValue(newStack.EffectTypeId, out EffectDef? effectDef))
+            return;
+
+        // Copy global duration if available
+        if (newStack.Duration is null && effectDef.DefaultDuration is not null)
+            newStack.Duration = effectDef.DefaultDuration.Clone();
+
+        bool isActive = !newStack.Duration?.EvaluateAllConditions(stats, false) ?? true;
+        bool isImmune = stats.IsImmuneToStatusEffect(newStack.EffectTypeId);
+        bool shouldAddNew = isActive && !isImmune;
+
+        if (TryGetValue(newStack.EffectTypeId, out StatusEffect? statusEffect))
+        {
+            if (shouldAddNew)
+                statusEffect.ReplaceStackBySource(stats, oldSource, newStack, newSource);
+            else
+                statusEffect.RemoveStacksBySource(oldSource);
+        }
         else
-            AddStatusEffect(stats, stack, effectDef);
-    }
-
-    private void AddStatusEffect(Stats stats, EffectStack stack, EffectDef effectDef)
-    {
-        StatusEffect statusEffect = StatusEffect.Create(effectDef);
-        statusEffect.Stacks.Add(stack);
-        Add(stack.EffectTypeId, statusEffect);
-        statusEffect.Initialize(stats);
-        UpdateActive(stats, statusEffect, effectDef);
-    }
-
-    private void UpdateStatusEffect(
-        Stats stats,
-        StatusEffect statusEffect,
-        EffectStack newStack,
-        EffectDef effectDef)
-    {
-        // There may be an inactive stack with a source
-        if (!statusEffect.IsActive)
         {
-            statusEffect.Stacks.Add(newStack);
-            UpdateActive(stats, statusEffect, effectDef);
-            return;
-        }
-
-        if (effectDef.StackMode == StackModes.Multi
-            || newStack.Source is not null
-            || GetFirstStack(statusEffect) is not EffectStack existingStack)
-        {
-            statusEffect.Stacks.Add(newStack);
-            effectDef.OnAddStack?.Invoke(stats, statusEffect);
-            return;
-        }
-
-        // TODO: Replace?
-        // if (newStack.Op == OpDB.Replace && newStack.Duration is Condition condition)
-        // {
-        //     condition.Unregister();
-        //     newStack.Duration = null;
-        //     existingStack.Duration?.Unregister();
-        //     existingStack.Duration = condition;
-        //     condition.Register(existingStack, null);
-        // }
-
-        if (effectDef.StackMode == StackModes.Reup)
-            existingStack.Duration?.ReupAllData();
-        else if (effectDef.StackMode == StackModes.Extend)
-            Extend(existingStack, newStack);
-
-        // TODO: Max stack
-        existingStack.Value += newStack.Value;
-
-        static void Extend(EffectStack existingStack, EffectStack newStack)
-        {
-            // See if the new stack has a time condition
-            if (newStack.Duration?.GetFirstCondition<TimedCondition>() is not TimedCondition stackTime)
-                return;
-
-            // If existing stack has a time condition, extend it.
-            if (existingStack.Duration?.GetFirstCondition<TimedCondition>() is TimedCondition effectTime)
+            if (shouldAddNew)
             {
-                effectTime.TimeLeft += stackTime.TimeLeft;
-                return;
+                statusEffect = StatusEffect.Create(effectDef);
+                statusEffect.Initialize(stats, newSource, isImmune);
+                Add(newStack.EffectTypeId, statusEffect);
+                statusEffect.AddStack(stats, newStack, newSource);
             }
-
-            // If not, clone the stack's timed condition and apply it to the effect.
-            Condition clonedTime = stackTime.CloneSingle();
-            clonedTime.Initialize(existingStack, null);
-
-            if (existingStack.Duration is not null)
-                clonedTime.SetOr(existingStack.Duration);
-
-            existingStack.Duration = clonedTime;
         }
 
-        static EffectStack? GetFirstStack(StatusEffect statusEffect)
-        {
-            foreach (EffectStack stack in statusEffect.Stacks)
-            {
-                if (stack.Source is not null)
-                    return stack;
-            }
-
-            return null;
-        }
+        if (!shouldAddNew)
+            newStack.ReturnToPool();
     }
 
-    internal void RemoveStacksBySource(Stats stats, string effectTypeId, object? source)
+    internal void RemoveStacksBySource(string effectTypeId, object? source)
     {
-        if (!TryGetValue(effectTypeId, out StatusEffect? statusEffect)
-            || !EffectDefDB.TryGetValue(statusEffect.EffectTypeId, out var effectDef))
+        if (!TryGetValue(effectTypeId, out StatusEffect? statusEffect))
             return;
 
-        statusEffect.RemoveStacksBySource(source);
-        UpdateActive(stats, statusEffect, effectDef);
+        if (statusEffect.TotalStackCount == 0)
+            RemoveStatusEffect(statusEffect);
+        else
+            statusEffect.RemoveStacksBySource(source);
     }
 
-    internal void RemoveStack(Stats stats, EffectStack stack)
+    internal void RemoveStackByRef(EffectStack stack)
     {
-        if (!TryGetValue(stack.EffectTypeId, out StatusEffect? statusEffect)
-            || !EffectDefDB.TryGetValue(statusEffect.EffectTypeId, out var effectDef))
+        if (!TryGetValue(stack.EffectTypeId, out StatusEffect? statusEffect))
             return;
 
-        statusEffect.RemoveStack(stack);
-        UpdateActive(stats, statusEffect, effectDef);
+        statusEffect.RemoveStackByRef(stack);
     }
 
     private void RemoveStatusEffect(StatusEffect statusEffect)
     {
         string effectTypeId = statusEffect.EffectTypeId;
-        statusEffect.Uninitialize();
         statusEffect.ReturnToPool();
         Remove(effectTypeId);
-    }
-
-    internal void UpdateActive(Stats stats, StatusEffect statusEffect, EffectDef effectDef)
-    {
-        string effectTypeId = statusEffect.EffectTypeId;
-        bool wasActive = statusEffect.IsActive;
-        bool isImmune = stats.IsImmuneToStatusEffect(effectTypeId);
-        statusEffect.IsActive = !isImmune && statusEffect.HasActiveStacks();
-
-        if (!wasActive && statusEffect.IsActive)
-        {
-            effectDef.OnActivate?.Invoke(stats, statusEffect);
-            stats.RaiseStatusEffectChanged(effectTypeId);
-        }
-        else if (wasActive && !statusEffect.IsActive)
-        {
-            effectDef.OnDeactivate?.Invoke(stats, statusEffect);
-
-            if (statusEffect.Stacks.Count == 0)
-                RemoveStatusEffect(statusEffect);
-
-            stats.RaiseStatusEffectChanged(effectTypeId);
-            return;
-        }
-
-        if (statusEffect.Stacks.Count == 0)
-            RemoveStatusEffect(statusEffect);
     }
 }

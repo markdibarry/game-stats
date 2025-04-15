@@ -49,16 +49,16 @@ public sealed class TimedCondition : Condition
         Stats?.RemoveTimedCondition(this);
     }
 
-    protected override bool Evaluate() => TimeLeft <= 0;
+    protected override bool Evaluate(Stats stats) => TimeLeft <= 0;
 
-    public void OnProcess(double delta)
+    public void OnProcess(Stats stats, double delta)
     {
-        if (Evaluate())
+        if (Evaluate(stats))
             return;
 
         TimeLeft = Math.Max(0, TimeLeft - (float)delta);
 
-        if (Evaluate())
+        if (Evaluate(stats))
             RaiseConditionChanged();
     }
 }

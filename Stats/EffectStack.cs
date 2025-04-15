@@ -8,7 +8,11 @@ public class EffectStack : IStatsPoolable, IConditional
     [JsonPropertyOrder(0)]
     public string EffectTypeId { get; set; } = string.Empty;
     [JsonPropertyOrder(1)]
-    public float Value { get; set; } = 1;
+    public int Value
+    {
+        get => field;
+        set => field = Math.Max(value, 1);
+    }
     [JsonPropertyOrder(2)]
     public Condition? Duration { get; set; }
     [JsonIgnore]
@@ -17,6 +21,8 @@ public class EffectStack : IStatsPoolable, IConditional
     public bool IsActive { get; private set; }
     [JsonIgnore]
     public Stats? Stats { get; private set; }
+    [JsonIgnore]
+    public StatusEffect? StatusEffect { get; set; }
 
     public static EffectStack Create() => StatsPool.Get<EffectStack>();
 
@@ -37,11 +43,11 @@ public class EffectStack : IStatsPoolable, IConditional
 
     public void ClearObject()
     {
+        Uninitialize();
         EffectTypeId = string.Empty;
         Value = 1;
         Duration?.ReturnToPool();
         Duration = null;
-        Source = null;
     }
 
     public EffectStack Clone()
@@ -64,18 +70,17 @@ public class EffectStack : IStatsPoolable, IConditional
         if (IsActive != isActive)
         {
             IsActive = isActive;
-
-            if (!IsActive && Source is null)
-                Stats?.RemoveStackByRef(this);
+            StatusEffect?.OnStackChanged(this);
         }
     }
 
-    public void Initialize(Stats stats, object? source)
+    public void Initialize(Stats stats, StatusEffect statusEffect, object? source)
     {
         if (Stats is not null)
             return;
 
         Stats = stats;
+        StatusEffect = statusEffect;
         Source = source;
         IsActive = true;
 
@@ -93,6 +98,7 @@ public class EffectStack : IStatsPoolable, IConditional
 
         Duration?.Uninitialize();
         Stats = null;
+        StatusEffect = null;
         Source = null;
         IsActive = false;
     }

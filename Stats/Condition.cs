@@ -11,8 +11,6 @@ public abstract class Condition : IStatsPoolable
 
     [JsonIgnore]
     public bool Result { get; private set; }
-    [JsonPropertyOrder(-4)]
-    public bool Not { get; set; }
     [JsonPropertyOrder(-3)]
     public bool ReupOnMet { get; set; }
     /// <summary>
@@ -42,6 +40,14 @@ public abstract class Condition : IStatsPoolable
             return Or?.CheckAllConditions(hasSource) ?? false;
     }
 
+    internal bool EvaluateAllConditions(Stats stats, bool hasSource = false)
+    {
+        if (Evaluate(stats) && !(SourceIgnored && hasSource))
+            return And?.EvaluateAllConditions(stats, hasSource) ?? true;
+        else
+            return Or?.EvaluateAllConditions(stats, hasSource) ?? false;
+    }
+
     public T? GetFirstCondition<T>() where T : Condition, new()
     {
         if (this is T t)
@@ -58,6 +64,7 @@ public abstract class Condition : IStatsPoolable
 
     public void ClearObject()
     {
+        Uninitialize();
         Result = false;
         _parent = null;
 
@@ -75,7 +82,6 @@ public abstract class Condition : IStatsPoolable
 
         Conditional = null;
         ReupOnMet = false;
-        Not = false;
         SourceIgnored = false;
         ClearData();
     }
@@ -93,13 +99,12 @@ public abstract class Condition : IStatsPoolable
         return clone;
     }
 
-    public Condition CloneSingle()
+    private Condition CloneSingle()
     {
         if (StatsPool.GetSameTypeOrNull(this) is not Condition clone)
             clone = ConditionDB.GetNew(this);
 
         clone.ReupOnMet = ReupOnMet;
-        clone.Not = Not;
         clone.SourceIgnored = SourceIgnored;
         clone.CopyData(this);
         return clone;
@@ -117,7 +122,7 @@ public abstract class Condition : IStatsPoolable
     public void Reup()
     {
         ResetData();
-        UpdateCondition();
+        UpdateResult();
     }
 
     public void ReupAllData()
@@ -134,10 +139,13 @@ public abstract class Condition : IStatsPoolable
 
         _parent = parent;
         Conditional = owner;
-        SubscribeEvents();
+
+        if (!SourceIgnored || owner.Source == null)
+            SubscribeEvents();
+
         And?.Initialize(owner, this);
         Or?.Initialize(owner, this);
-        UpdateCondition();
+        UpdateResult();
     }
 
     public void Uninitialize()
@@ -145,18 +153,21 @@ public abstract class Condition : IStatsPoolable
         if (Conditional == null)
             return;
 
-        UnsubscribeEvents();
+        if (!SourceIgnored || Conditional.Source == null)
+            UnsubscribeEvents();
+
         And?.Uninitialize();
         Or?.Uninitialize();
         _parent = null;
         Conditional = null;
+        Result = false;
     }
 
     protected abstract void SubscribeEvents();
 
     protected abstract void UnsubscribeEvents();
 
-    protected abstract bool Evaluate();
+    protected abstract bool Evaluate(Stats stats);
 
     /// <summary>
     /// Reverts condition data to initial user set values.
@@ -175,16 +186,16 @@ public abstract class Condition : IStatsPoolable
     protected abstract void CopyData(Condition source);
 
     /// <summary>
-    /// Updates the _conditionMet flag and returns true if the result is different
+    /// Updates the Result flag and returns true if the result is different
     /// than the previous value.
     /// </summary>
     /// <returns>The result of whether the condition was updated or not.</returns>
-    protected bool UpdateCondition()
+    protected bool UpdateResult()
     {
-        bool result = Evaluate();
+        if (Stats == null)
+            return false;
 
-        if (Not)
-            result = !result;
+        bool result = Evaluate(Stats);
 
         if (result != Result)
         {
@@ -197,7 +208,7 @@ public abstract class Condition : IStatsPoolable
 
     protected void RaiseConditionChanged()
     {
-        if (!UpdateCondition())
+        if (!UpdateResult())
             return;
 
         Condition condition = GetHeadCondition();
@@ -220,8 +231,11 @@ public static class ConditionExtensions
     }
 
     /// <summary>
-    /// Sets if this condition should be ignored when the Conditional has a source.
+    /// If true this condition will be ignored when the Conditional has a source.
     /// </summary>
+    /// <remarks>
+    /// Note: Should not be called on a Condition currently in use.
+    /// </remarks>
     /// <typeparam name="T"></typeparam>
     /// <param name="condition"></param>
     /// <param name="enable"></param>
@@ -229,12 +243,6 @@ public static class ConditionExtensions
     public static T SetSourceIgnored<T>(this T condition, bool enable) where T : Condition
     {
         condition.SourceIgnored = enable;
-        return condition;
-    }
-
-    public static T SetNot<T>(this T condition, bool enable) where T : Condition
-    {
-        condition.Not = enable;
         return condition;
     }
 
