@@ -4,12 +4,6 @@ namespace GameCore.Statistics;
 
 public class EffectLookup : Dictionary<string, StatusEffect>
 {
-    public void AddEffects(List<StatusEffect> effectsToAdd)
-    {
-        foreach (StatusEffect effect in effectsToAdd)
-            Add(effect.EffectTypeId, effect.Clone());
-    }
-
     public void ClearObject()
     {
         foreach (var value in Values)
@@ -18,12 +12,19 @@ public class EffectLookup : Dictionary<string, StatusEffect>
         Clear();
     }
 
-    public void CopyTo(EffectLookup statusEffects)
+    public void CopyTo(EffectLookup statusEffects, bool ignoreStacksWithSource)
     {
         statusEffects.Clear();
 
         foreach (StatusEffect statusEffect in Values)
-            statusEffects.Add(statusEffect.EffectTypeId, statusEffect.Clone());
+        {
+            var clone = statusEffect.Clone(ignoreStacksWithSource);
+
+            if (clone.TotalStackCount == 0)
+                clone.ReturnToPool();
+            else
+                statusEffects.Add(statusEffect.EffectTypeId, clone);
+        }
     }
 
     public bool IsActive(string effectTypeId)

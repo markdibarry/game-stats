@@ -34,7 +34,7 @@ public sealed class StatusEffect : IStatsPoolable, IConditional
     public object? Source => null;
     public string EffectTypeId { get; set; }
     public List<Condition>? CustomConditions { get; set; }
-    public List<EffectStack> Stacks { get; set; }
+    public List<EffectStack> Stacks { get; }
     [JsonIgnore]
     public int TotalStackCount => Stacks.Count;
     [JsonIgnore]
@@ -97,7 +97,7 @@ public sealed class StatusEffect : IStatsPoolable, IConditional
         return statusEffect;
     }
 
-    public StatusEffect Clone()
+    public StatusEffect Clone(bool ignoreStacksWithSource)
     {
         StatusEffect clone = StatsPool.Get<StatusEffect>();
         clone.EffectTypeId = EffectTypeId;
@@ -115,7 +115,12 @@ public sealed class StatusEffect : IStatsPoolable, IConditional
         }
 
         foreach (EffectStack stack in Stacks)
+        {
+            if (stack.Source != null && ignoreStacksWithSource)
+                continue;
+
             clone.Stacks.Add(stack.Clone());
+        }
 
         return clone;
     }
@@ -223,6 +228,11 @@ public sealed class StatusEffect : IStatsPoolable, IConditional
         }
 
         ActiveStackCount = activeStacks;
+    }
+
+    internal void AddStackUnsafe(EffectStack stack)
+    {
+        Stacks.Add(stack);
     }
 
     internal void AddStack(Stats stats, EffectStack newStack, object? source)

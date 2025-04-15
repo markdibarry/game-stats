@@ -77,39 +77,13 @@ public class Stats : IStatsPoolable
         s_isImmuneToStatusEffect = isImmune;
     }
 
-    public void ClearObject()
-    {
-        StatsOwner = null;
-        Modifiers.ClearObject();
-        StatLookup.Clear();
-        StatusEffects.ClearObject();
-    }
-
-    public Stats Clone()
-    {
-        Stats clone = Create(StatLookup, Modifiers, StatusEffects);
-        clone.Initialize(null);
-        return clone;
-    }
-
-    public void CopyStatLookupTo(Dictionary<string, Stat> clone)
-    {
-        clone.Clear();
-
-        foreach (var kvp in StatLookup)
-            clone.Add(kvp.Key, kvp.Value);
-    }
-
-    public void CopyModifierLookupTo(ModifierLookup clone, bool ignoreModsWithSource = false)
-    {
-        Modifiers.CopyTo(clone, ignoreModsWithSource);
-    }
-
-    public void CopyStatusEffectsTo(EffectLookup clone)
-    {
-        StatusEffects.CopyTo(clone);
-    }
-
+    /// <summary>
+    /// Creates a new Stats object using the collections provided as a base.
+    /// </summary>
+    /// <param name="statLookup">The stat lookup.</param>
+    /// <param name="modLookup">The modifier lookup</param>
+    /// <param name="statusEffects">The effect lookup</param>
+    /// <returns>The new Stats object</returns>
     public static Stats Create(
         Dictionary<string, Stat> statLookup,
         ModifierLookup modLookup,
@@ -126,8 +100,62 @@ public class Stats : IStatsPoolable
         }
 
         modLookup.CopyTo(stats.Modifiers, false);
-        statusEffects.CopyTo(stats.StatusEffects);
+        statusEffects.CopyTo(stats.StatusEffects, false);
         return stats;
+    }
+
+    public void ClearObject()
+    {
+        StatsOwner = null;
+        Modifiers.ClearObject();
+        StatLookup.Clear();
+        StatusEffects.ClearObject();
+    }
+
+    /// <summary>
+    /// Clones the Stats object.
+    /// </summary>
+    /// <remarks>
+    /// Can be useful for comparing stat changes.
+    /// </remarks>
+    /// <returns>The new Stats object</returns>
+    public Stats Clone()
+    {
+        Stats clone = Create(StatLookup, Modifiers, StatusEffects);
+        clone.Initialize(null);
+        return clone;
+    }
+
+    /// <summary>
+    /// Copies all Stats to a new Dictionary<string, Stat>.
+    /// </summary>
+    /// <param name="clone">The collection to clone to</param>
+    public void CopyStatLookupTo(Dictionary<string, Stat> clone)
+    {
+        clone.Clear();
+
+        foreach (var kvp in StatLookup)
+            clone.Add(kvp.Key, kvp.Value);
+    }
+
+    /// <summary>
+    /// Copies all Stats modifiers to a new ModifierLookup.
+    /// </summary>
+    /// <param name="clone">The ModifierLookup to clone to</param>
+    /// <param name="ignoreModsWithSource">If true, does not copy modifiers with a source.</param>
+    public void CopyModifierLookupTo(ModifierLookup clone, bool ignoreModsWithSource)
+    {
+        Modifiers.CopyTo(clone, ignoreModsWithSource);
+    }
+
+    /// <summary>
+    /// Copies all Stats effects to a new EffectLookup.
+    /// </summary>
+    /// <param name="clone">The EffectLookup to clone to</param>
+    /// <param name="ignoreModsWithSource">If true, does not copy modifiers with a source.</param>
+    public void CopyStatusEffectsTo(EffectLookup clone, bool ignoreStacksWithSource)
+    {
+        StatusEffects.CopyTo(clone, ignoreStacksWithSource);
     }
 
     public void Initialize(object? statsOwner)
@@ -181,23 +209,6 @@ public class Stats : IStatsPoolable
         return func(this, stat, mods, ignoreHidden);
     }
 
-    /// <summary>
-    /// Adds a Modifier.
-    /// </summary>
-    /// <remarks>
-    /// If the modifier is self-managed, supply null as the source.
-    /// <br/>
-    /// If the modifier provided is meant to be reused, clone the modifier using Modifier.Clone().
-    /// </remarks>
-    /// <param name="mod">The modifier to be added.</param>
-    /// <param name="source">The source the modifier is tied to.</param>
-    public void AddMod(Modifier mod, object? source)
-    {
-        string statTypeId = mod.StatTypeId;
-        Modifiers.AddMod(this, mod, source);
-        TryCallModifyDel(statTypeId);
-    }
-
     public ModifierLookup GetModifiersUnsafe()
     {
         return Modifiers;
@@ -214,6 +225,38 @@ public class Stats : IStatsPoolable
             return Array.Empty<Modifier>();
 
         return list;
+    }
+
+    /// <summary>
+    /// Adds a Modifier.
+    /// </summary>
+    /// <remarks>
+    /// If the modifier is self-managed, supply null as the source.
+    /// <br/>
+    /// If the modifier provided is meant to be reused, clone the modifier using Modifier.Clone().
+    /// </remarks>
+    /// <param name="mod">The modifier to be added.</param>
+    /// <param name="source">The source the modifier is tied to.</param>
+    public void AddMod(Modifier mod, object? source)
+    {
+        string statTypeId = mod.StatTypeId;
+
+        // If Stats is not initialized, add it without checks.
+        if (StatsOwner == null)
+        {
+            if (!Modifiers.TryGetValue(statTypeId, out var mods))
+            {
+                mods = StatsPool.GetList<Modifier>();
+                Modifiers.Add(statTypeId, mods);
+            }
+
+            mods.Add(mod);
+        }
+        else
+        {
+            Modifiers.AddMod(this, mod, source);
+            TryCallModifyDel(statTypeId);
+        }
     }
 
     /// <summary>
@@ -265,7 +308,23 @@ public class Stats : IStatsPoolable
     /// <param name="source">The source the stack is tied to.</param>
     public void AddStack(EffectStack stack, object? source)
     {
-        StatusEffects.AddStack(this, stack, source);
+        string effectTypeId = stack.EffectTypeId;
+
+        // If Stats is not initialized, add it without checks.
+        if (StatsOwner == null)
+        {
+            if (!StatusEffects.TryGetValue(effectTypeId, out var effect))
+            {
+                effect = StatusEffect.Create(effectTypeId);
+                StatusEffects.Add(effectTypeId, effect);
+            }
+
+            effect.AddStackUnsafe(stack);
+        }
+        else
+        {
+            StatusEffects.AddStack(this, stack, source);
+        }
     }
 
     /// <summary>
@@ -355,17 +414,17 @@ public class Stats : IStatsPoolable
         _conditionsToProcess.Remove(timedCondition);
     }
 
-    public void RaiseStatChanged(string statTypeId)
+    internal void RaiseStatChanged(string statTypeId)
     {
         StatChanged?.Invoke(this, statTypeId);
     }
 
-    public void RaiseStatusEffectChanged(string effectTypeId)
+    internal void RaiseStatusEffectChanged(string effectTypeId)
     {
         StatusEffectChanged?.Invoke(this, effectTypeId);
     }
 
-    public void RaiseEffectStackChanged(string effectTypeId)
+    internal void RaiseEffectStackChanged(string effectTypeId)
     {
         EffectStackChanged?.Invoke(this, effectTypeId);
     }
