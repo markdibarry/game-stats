@@ -83,6 +83,32 @@ public static class StatsPool
     }
 
     /// <summary>
+    /// Retrieves an object from the pool of the provided type.
+    /// If the pool is empty, null is returned.
+    /// </summary>
+    /// <param name="type">The type of object to retrieve.</param>
+    /// <returns>The retrieved object or null.</returns>
+    public static object? GetOrNull(Type type)
+    {
+        StatsLimitedQueue<IStatsPoolable> limitedQueue = GetLimitedQueue(type);
+        return limitedQueue.Count > 0 ? limitedQueue.Dequeue() : default;
+    }
+
+    /// <summary>
+    /// Retrieves a List from the pool of the provided type.
+    /// If the pool is empty, null is returned.
+    /// </summary>
+    /// <param name="type">The type of List to retrieve.</param>
+    /// <returns>The retrieved List or null.</returns>
+    public static object? GetListOrNull(Type type)
+    {
+        if (!s_listPool.TryGetValue(type, out StatsLimitedQueue<object>? limitedQueue))
+            return null;
+
+        return limitedQueue.Count > 0 ? limitedQueue.Dequeue() : default;
+    }
+
+    /// <summary>
     /// Retrieves a List from the pool of a registered type.
     /// If the pool is empty, a new List is created.
     /// </summary>

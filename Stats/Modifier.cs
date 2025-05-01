@@ -19,7 +19,7 @@ public sealed class Modifier : IStatsPoolable, IConditional
     [JsonIgnore]
     public bool IsActive { get; private set; }
     [JsonIgnore]
-    public object? Source { get; private set; }
+    public object? Source { get; internal set; }
     [JsonIgnore]
     public Stats? Stats { get; private set; }
 

@@ -15,6 +15,32 @@ public class Stats : IStatsPoolable
         s_isImmuneToStatusEffect = (stats, statTypeId) => false;
     }
 
+    public Stats()
+    {
+        StatLookup = [];
+        Modifiers = [];
+        StatusEffects = [];
+    }
+
+    public Stats(Dictionary<string, Stat> statLookup)
+    {
+        StatLookup = statLookup;
+        Modifiers = [];
+        StatusEffects = [];
+    }
+
+    [JsonConstructor]
+    public Stats(
+        Dictionary<string, Stat> statLookup,
+        ModifierLookup modifiers,
+        EffectLookup statusEffects
+    )
+    {
+        StatLookup = statLookup;
+        Modifiers = modifiers;
+        StatusEffects = statusEffects;
+    }
+
     private static readonly Dictionary<string, float> s_statDefault = [];
     private static readonly Dictionary<string, CalculateDel> s_statToCalculateDel = [];
     private static readonly Dictionary<string, ModifyDel> s_statToModifyDelegate = [];
@@ -25,9 +51,12 @@ public class Stats : IStatsPoolable
 
     [JsonIgnore]
     public object? StatsOwner { get; private set; }
-    protected Dictionary<string, Stat> StatLookup { get; } = [];
-    protected ModifierLookup Modifiers { get; } = [];
-    protected EffectLookup StatusEffects { get; } = [];
+    [JsonInclude]
+    protected Dictionary<string, Stat> StatLookup { get; init; }
+    [JsonInclude]
+    protected ModifierLookup Modifiers { get; init; }
+    [JsonInclude]
+    protected EffectLookup StatusEffects { get; init; }
 
     public event Action<Stats, string>? StatChanged;
     public event Action<Stats, string>? StatusEffectChanged;
@@ -122,7 +151,6 @@ public class Stats : IStatsPoolable
     public Stats Clone()
     {
         Stats clone = Create(StatLookup, Modifiers, StatusEffects);
-        clone.Initialize(null);
         return clone;
     }
 
@@ -209,9 +237,14 @@ public class Stats : IStatsPoolable
         return func(this, stat, mods, ignoreHidden);
     }
 
-    public ModifierLookup GetModifiersUnsafe()
+    public IReadOnlyDictionary<string, List<Modifier>> GetModifiersUnsafe(bool ignoreModsWithSource)
     {
-        return Modifiers;
+        if (!ignoreModsWithSource)
+            return Modifiers;
+
+        ModifierLookup result = [];
+        Modifiers.CopyTo(result, true);
+        return result;
     }
 
     public IReadOnlyList<Modifier> GetModifiersByType(string statTypeId)
@@ -250,6 +283,7 @@ public class Stats : IStatsPoolable
                 Modifiers.Add(statTypeId, mods);
             }
 
+            mod.Source = source;
             mods.Add(mod);
         }
         else
@@ -281,9 +315,14 @@ public class Stats : IStatsPoolable
         TryCallModifyDel(statTypeId);
     }
 
-    public EffectLookup GetStatusEffectsUnsafe()
+    public IReadOnlyDictionary<string, StatusEffect> GetStatusEffectsUnsafe(bool ignoreStacksWithSource)
     {
-        return StatusEffects;
+        if (!ignoreStacksWithSource)
+            return StatusEffects;
+
+        EffectLookup result = [];
+        StatusEffects.CopyTo(result, true);
+        return result;
     }
 
     /// <summary>
