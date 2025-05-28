@@ -1,4 +1,4 @@
-namespace GameCore.Statistics;
+namespace GameCore.Statistics.Pooling;
 
 /// <summary>
 /// Represents a type that can be stored in a pool. Pools maintain
@@ -6,7 +6,7 @@ namespace GameCore.Statistics;
 /// excess memory allocations. Pooled objects are "reset" whenever they are
 /// returned to the pool so that they can be reused.
 /// </summary>
-public interface IStatsPoolable
+public interface IPoolable
 {
     /// <summary>
     /// Resets the object to its default state

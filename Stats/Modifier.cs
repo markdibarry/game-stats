@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using GameCore.Statistics.Pooling;
 
 namespace GameCore.Statistics;
 
-public sealed class Modifier : IStatsPoolable, IConditional
+public sealed class Modifier : IPoolable, IConditional
 {
     [JsonPropertyOrder(0)]
     public string StatTypeId { get; set; } = string.Empty;
@@ -23,7 +24,7 @@ public sealed class Modifier : IStatsPoolable, IConditional
     [JsonIgnore]
     public Stats? Stats { get; private set; }
 
-    public static Modifier Create() => StatsPool.Get<Modifier>();
+    public static Modifier Create() => Pool.Get<Modifier>();
 
     public static Modifier Create(Action<Modifier> action)
     {
@@ -51,7 +52,7 @@ public sealed class Modifier : IStatsPoolable, IConditional
         bool isHidden,
         object? source)
     {
-        Modifier mod = StatsPool.Get<Modifier>();
+        Modifier mod = Pool.Get<Modifier>();
         mod.StatTypeId = statTypeId;
         mod.Op = op;
         mod.Value = value;
@@ -104,6 +105,8 @@ public sealed class Modifier : IStatsPoolable, IConditional
 
             if (!IsActive && Source is null)
                 Stats?.RemoveModByRef(this);
+            else
+                Stats?.RaiseStatChanged(StatTypeId);
         }
     }
 
@@ -158,7 +161,7 @@ public sealed class Modifier : IStatsPoolable, IConditional
             Modifier mod = mods[i];
 
             // Add only of same type
-            if (statTypeId == string.Empty)
+            if (statTypeId.Length == 0)
                 statTypeId = mod.StatTypeId;
             else if (mod.StatTypeId != statTypeId)
                 return result;

@@ -2,10 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
+using GameCore.Statistics.Pooling;
 
 namespace GameCore.Statistics;
 
-public sealed class StatusEffect : IStatsPoolable, IConditional
+public sealed class StatusEffect : IPoolable, IConditional
 {
     public StatusEffect()
     {
@@ -79,13 +80,13 @@ public sealed class StatusEffect : IStatsPoolable, IConditional
 
     public static StatusEffect Create(EffectDef effectDef)
     {
-        StatusEffect statusEffect = StatsPool.Get<StatusEffect>();
+        StatusEffect statusEffect = Pool.Get<StatusEffect>();
         statusEffect.EffectTypeId = effectDef.EffectTypeId;
         statusEffect.EffectDef = effectDef;
 
         if (effectDef.CustomEffects.Count > 0)
         {
-            statusEffect.CustomConditions = StatsPool.GetList<Condition>();
+            statusEffect.CustomConditions = ListPool.Get<Condition>();
 
             foreach (EffectOnCondition effect in effectDef.CustomEffects)
             {
@@ -99,13 +100,13 @@ public sealed class StatusEffect : IStatsPoolable, IConditional
 
     public StatusEffect Clone(bool ignoreStacksWithSource)
     {
-        StatusEffect clone = StatsPool.Get<StatusEffect>();
+        StatusEffect clone = Pool.Get<StatusEffect>();
         clone.EffectTypeId = EffectTypeId;
         clone.EffectDef = EffectDef;
 
         if (CustomConditions is not null)
         {
-            clone.CustomConditions = StatsPool.GetList<Condition>();
+            clone.CustomConditions = ListPool.Get<Condition>();
 
             foreach (Condition condition in CustomConditions)
             {
@@ -130,7 +131,7 @@ public sealed class StatusEffect : IStatsPoolable, IConditional
         Uninitialize();
 
         if (CustomConditions is not null)
-            StatsPool.Return(CustomConditions);
+            ListPool.Return(CustomConditions);
 
         CustomConditions = null;
 

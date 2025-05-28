@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using GameCore.Statistics.Pooling;
 
 namespace GameCore.Statistics;
 
@@ -17,7 +18,7 @@ public class ModifierLookup : Dictionary<string, List<Modifier>>
                 if (mod.Source != null && ignoreModsWithSource)
                     continue;
 
-                listClone ??= StatsPool.GetList<Modifier>();
+                listClone ??= ListPool.Get<Modifier>();
                 listClone.Add(mod.Clone());
             }
 
@@ -31,7 +32,7 @@ public class ModifierLookup : Dictionary<string, List<Modifier>>
     public void ClearObject()
     {
         foreach (List<Modifier> mods in Values)
-            StatsPool.Return(mods);
+            ListPool.Return(mods);
 
         Clear();
     }
@@ -49,7 +50,7 @@ public class ModifierLookup : Dictionary<string, List<Modifier>>
 
         if (!TryGetValue(mod.StatTypeId, out List<Modifier>? mods))
         {
-            mods = StatsPool.GetList<Modifier>();
+            mods = ListPool.Get<Modifier>();
             Add(mod.StatTypeId, mods);
         }
 
@@ -103,7 +104,7 @@ public class ModifierLookup : Dictionary<string, List<Modifier>>
 
         if (mods.Count == 0)
         {
-            StatsPool.Return(mods);
+            ListPool.Return(mods);
             Remove(statTypeId);
         }
 

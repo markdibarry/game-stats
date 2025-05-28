@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Text.Json.Serialization;
+using GameCore.Statistics.Pooling;
 
 namespace GameCore.Statistics;
 
-public abstract class Condition : IStatsPoolable
+public abstract class Condition : IPoolable
 {
     private Condition? _parent;
 
@@ -27,7 +28,7 @@ public abstract class Condition : IStatsPoolable
 
     public static T Create<T>(Action<T> setup) where T : Condition, new()
     {
-        T cond = StatsPool.Get<T>();
+        T cond = Pool.Get<T>();
         setup(cond);
         return cond;
     }
@@ -101,7 +102,7 @@ public abstract class Condition : IStatsPoolable
 
     private Condition CloneSingle()
     {
-        if (StatsPool.GetSameTypeOrNull(this) is not Condition clone)
+        if (Pool.GetSameTypeOrNull(this) is not Condition clone)
             clone = ConditionDB.GetNew(this);
 
         clone.ReupOnMet = ReupOnMet;

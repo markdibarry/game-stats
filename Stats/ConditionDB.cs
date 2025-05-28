@@ -10,6 +10,7 @@ public static class ConditionDB
     static ConditionDB()
     {
         Register<TimedCondition>(TimedCondition.TypeId);
+        Register<ResourceCondition>(ResourceCondition.TypeId);
     }
 
     private static readonly Dictionary<string, Type> s_types = [];

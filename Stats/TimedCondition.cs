@@ -1,18 +1,18 @@
 ﻿using System;
-using System.Text.Json.Serialization;
+using GameCore.Statistics.Pooling;
 
 namespace GameCore.Statistics;
 
 public sealed class TimedCondition : Condition
 {
-    [JsonIgnore]
     public static string TypeId { get; set; } = "Timed";
+
     public float Duration { get; set; }
     public float TimeLeft { get; set; }
 
     public static TimedCondition Create(float duration, bool reupOnMet = false)
     {
-        TimedCondition timedCondition = StatsPool.Get<TimedCondition>();
+        TimedCondition timedCondition = Pool.Get<TimedCondition>();
         timedCondition.TimeLeft = duration;
         timedCondition.Duration = duration;
         timedCondition.ReupOnMet = reupOnMet;

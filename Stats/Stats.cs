@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using GameCore.Statistics.Pooling;
 
 namespace GameCore.Statistics;
 
-public class Stats : IStatsPoolable
+public class Stats : IPoolable
 {
     static Stats()
     {
@@ -31,14 +32,14 @@ public class Stats : IStatsPoolable
 
     [JsonConstructor]
     public Stats(
-        Dictionary<string, Stat> statLookup,
-        ModifierLookup modifiers,
-        EffectLookup statusEffects
+        IReadOnlyDictionary<string, Stat> attributes,
+        ModifierLookup modifiersWithoutSources,
+        EffectLookup effectsWithoutSources
     )
     {
-        StatLookup = statLookup;
-        Modifiers = modifiers;
-        StatusEffects = statusEffects;
+        StatLookup = (Dictionary<string, Stat>)attributes;
+        Modifiers = modifiersWithoutSources;
+        StatusEffects = effectsWithoutSources;
     }
 
     private static readonly Dictionary<string, float> s_statDefault = [];
@@ -47,16 +48,30 @@ public class Stats : IStatsPoolable
     private static readonly CalculateDel s_calculateDefault;
     private static StatusEffectDel s_isImmuneToStatusEffect;
 
-    private readonly HashSet<TimedCondition> _conditionsToProcess = [];
+    private HashSet<TimedCondition>? _timedConditions;
+    private HashSet<ResourceCondition>? _resourceConditions;
 
     [JsonIgnore]
     public object? StatsOwner { get; private set; }
-    [JsonInclude]
     protected Dictionary<string, Stat> StatLookup { get; init; }
-    [JsonInclude]
     protected ModifierLookup Modifiers { get; init; }
-    [JsonInclude]
     protected EffectLookup StatusEffects { get; init; }
+
+    /// <summary>
+    /// Stat lookup for serialization.
+    /// </summary>
+    [JsonInclude]
+    internal IReadOnlyDictionary<string, Stat> Attributes => StatLookup;
+    /// <summary>
+    /// Modifiers for serialization.
+    /// </summary>
+    [JsonInclude, JsonPropertyName(nameof(Modifiers))]
+    internal ModifierLookup ModifiersWithoutSources => (ModifierLookup)GetModifiersUnsafe(true);
+    /// <summary>
+    /// Status effects for serialization.
+    /// </summary>
+    [JsonInclude, JsonPropertyName(nameof(StatusEffects))]
+    internal EffectLookup EffectsWithoutSources => (EffectLookup)GetStatusEffectsUnsafe(true);
 
     public event Action<Stats, string>? StatChanged;
     public event Action<Stats, string>? StatusEffectChanged;
@@ -118,7 +133,7 @@ public class Stats : IStatsPoolable
         ModifierLookup modLookup,
         EffectLookup statusEffects)
     {
-        Stats stats = StatsPool.Get<Stats>();
+        Stats stats = Pool.Get<Stats>();
 
         foreach (KeyValuePair<string, float> pair in s_statDefault)
         {
@@ -137,8 +152,10 @@ public class Stats : IStatsPoolable
     {
         StatsOwner = null;
         Modifiers.ClearObject();
-        StatLookup.Clear();
         StatusEffects.ClearObject();
+        StatLookup.Clear();
+        _timedConditions?.Clear();
+        _resourceConditions?.Clear();
     }
 
     /// <summary>
@@ -279,7 +296,7 @@ public class Stats : IStatsPoolable
         {
             if (!Modifiers.TryGetValue(statTypeId, out var mods))
             {
-                mods = StatsPool.GetList<Modifier>();
+                mods = ListPool.Get<Modifier>();
                 Modifiers.Add(statTypeId, mods);
             }
 
@@ -439,22 +456,45 @@ public class Stats : IStatsPoolable
     /// <param name="delta"></param>
     public void Process(double delta)
     {
-        foreach (TimedCondition condition in _conditionsToProcess)
+        if (_timedConditions == null)
+            return;
+
+        foreach (TimedCondition condition in _timedConditions)
             condition.OnProcess(this, delta);
     }
 
     protected internal void AddTimedCondition(TimedCondition timedCondition)
     {
-        _conditionsToProcess.Add(timedCondition);
+        _timedConditions ??= [];
+        _timedConditions.Add(timedCondition);
+    }
+
+    protected internal void AddResourceCondition(ResourceCondition resourceCondition)
+    {
+        _resourceConditions ??= [];
+        _resourceConditions.Add(resourceCondition);
     }
 
     protected internal void RemoveTimedCondition(TimedCondition timedCondition)
     {
-        _conditionsToProcess.Remove(timedCondition);
+        _timedConditions ??= [];
+        _timedConditions.Remove(timedCondition);
+    }
+
+    protected internal void RemoveResourceCondition(ResourceCondition resourceCondition)
+    {
+        _resourceConditions ??= [];
+        _resourceConditions.Remove(resourceCondition);
     }
 
     internal void RaiseStatChanged(string statTypeId)
     {
+        if (_resourceConditions != null)
+        {
+            foreach (var condition in _resourceConditions)
+                condition.OnStatChanged(statTypeId);
+        }
+
         StatChanged?.Invoke(this, statTypeId);
     }
 

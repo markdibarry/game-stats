@@ -1,9 +1,10 @@
 using System;
 using System.Text.Json.Serialization;
+using GameCore.Statistics.Pooling;
 
 namespace GameCore.Statistics;
 
-public class EffectStack : IStatsPoolable, IConditional
+public class EffectStack : IPoolable, IConditional
 {
     [JsonPropertyOrder(0)]
     public string EffectTypeId { get; set; } = string.Empty;
@@ -24,7 +25,7 @@ public class EffectStack : IStatsPoolable, IConditional
     [JsonIgnore]
     public StatusEffect? StatusEffect { get; set; }
 
-    public static EffectStack Create() => StatsPool.Get<EffectStack>();
+    public static EffectStack Create() => Pool.Get<EffectStack>();
 
     public static EffectStack Create(Action<EffectStack> action)
     {

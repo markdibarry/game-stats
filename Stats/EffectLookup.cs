@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using GameCore.Statistics.Pooling;
 
 namespace GameCore.Statistics;
 

@@ -1,14 +1,14 @@
 using System;
 using System.Collections.Generic;
 
-namespace GameCore.Statistics;
+namespace GameCore.Statistics.Pooling;
 
 /// <summary>
 /// A queue wrapper with an upper limit.
 /// </summary>
-public class StatsLimitedQueue<T>
+public class LimitedQueue<T>
 {
-    public StatsLimitedQueue(int limit = -1)
+    public LimitedQueue(int limit = -1)
     {
         Limit = Math.Max(-1, limit);
     }
@@ -43,9 +43,9 @@ public class StatsLimitedQueue<T>
     public T Dequeue() => _queue.Dequeue();
 }
 
-public class StatsPoolQueue<T> : StatsLimitedQueue<T>
+public class PoolQueue<T> : LimitedQueue<T>
 {
-    public StatsPoolQueue(int limit, Func<T> createFunc)
+    public PoolQueue(int limit, Func<T> createFunc)
         : base(limit)
     {
         CreateFunc = createFunc;
