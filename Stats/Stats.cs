@@ -9,8 +9,10 @@ public class Stats : IPoolable
 {
     static Stats()
     {
-        s_calculateDefault = (stats, stat, mods, ignoreHidden) =>
+        s_calculateDefault = (stats, statTypeId, ignoreHidden) =>
         {
+            Stat stat = stats.GetStat(statTypeId);
+            IReadOnlyList<Modifier> mods = stats.GetModifiersOrEmpty(statTypeId);
             return Modifier.Calculate(mods, stat.BaseValue, ignoreHidden);
         };
         s_isImmuneToStatusEffect = (stats, statTypeId) => false;
@@ -78,7 +80,7 @@ public class Stats : IPoolable
     public event Action<Stats, string>? EffectStackChanged;
 
     public delegate void ModifyDel(Stats stats, string statTypeId);
-    public delegate float CalculateDel(Stats stats, Stat stat, IReadOnlyList<Modifier> mods, bool ignoreHidden);
+    public delegate float CalculateDel(Stats stats, string statTypeId, bool ignoreHidden);
     public delegate bool StatusEffectDel(Stats stats, string effectTypeId);
 
     public static EffectDef RegisterEffect(string effectTypeId)
@@ -129,22 +131,22 @@ public class Stats : IPoolable
     /// <param name="statusEffects">The effect lookup</param>
     /// <returns>The new Stats object</returns>
     public static Stats Create(
-        Dictionary<string, Stat> statLookup,
-        ModifierLookup modLookup,
-        EffectLookup statusEffects)
+        Dictionary<string, Stat>? statLookup,
+        ModifierLookup? modLookup,
+        EffectLookup? statusEffects)
     {
         Stats stats = Pool.Get<Stats>();
 
         foreach (KeyValuePair<string, float> pair in s_statDefault)
         {
-            if (statLookup.TryGetValue(pair.Key, out Stat stat))
+            if (statLookup != null && statLookup.TryGetValue(pair.Key, out Stat stat))
                 stats.StatLookup[pair.Key] = stat;
             else
                 stats.StatLookup[pair.Key] = new Stat(pair.Value);
         }
 
-        modLookup.CopyTo(stats.Modifiers, false);
-        statusEffects.CopyTo(stats.StatusEffects, false);
+        modLookup?.CopyTo(stats.Modifiers, false);
+        statusEffects?.CopyTo(stats.StatusEffects, false);
         return stats;
     }
 
@@ -249,9 +251,9 @@ public class Stats : IPoolable
         IReadOnlyList<Modifier> mods = GetModifiersOrEmpty(statTypeId);
 
         if (!s_statToCalculateDel.TryGetValue(statTypeId, out CalculateDel? func))
-            return s_calculateDefault(this, stat, mods, ignoreHidden);
+            return s_calculateDefault(this, statTypeId, ignoreHidden);
 
-        return func(this, stat, mods, ignoreHidden);
+        return func(this, statTypeId, ignoreHidden);
     }
 
     public IReadOnlyDictionary<string, List<Modifier>> GetModifiersUnsafe(bool ignoreModsWithSource)
@@ -264,12 +266,7 @@ public class Stats : IPoolable
         return result;
     }
 
-    public IReadOnlyList<Modifier> GetModifiersByType(string statTypeId)
-    {
-        return GetModifiersOrEmpty(statTypeId);
-    }
-
-    private IReadOnlyList<Modifier> GetModifiersOrEmpty(string statTypeId)
+    public IReadOnlyList<Modifier> GetModifiersOrEmpty(string statTypeId)
     {
         if (!Modifiers.TryGetValue(statTypeId, out List<Modifier>? list))
             return Array.Empty<Modifier>();
@@ -340,6 +337,15 @@ public class Stats : IPoolable
         EffectLookup result = [];
         StatusEffects.CopyTo(result, true);
         return result;
+    }
+
+    /// <summary>
+    /// Returns current status effects, both active and unactive.
+    /// </summary>
+    /// <returns></returns>
+    public IReadOnlyCollection<string> GetStatusEffects()
+    {
+        return StatusEffects.Keys;
     }
 
     /// <summary>
