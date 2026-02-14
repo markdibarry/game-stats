@@ -11,7 +11,7 @@ public class EffectStack : IPoolable, IConditional
     [JsonPropertyOrder(1)]
     public int Value
     {
-        get => field;
+        get;
         set => field = Math.Max(value, 1);
     }
     [JsonPropertyOrder(2)]
