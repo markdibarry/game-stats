@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using GameCore.Statistics.Pooling;
+using GameCore.Pooling;
 
 namespace GameCore.Statistics;
 

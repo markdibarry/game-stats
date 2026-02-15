@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Text.Json.Serialization;
-using GameCore.Statistics.Pooling;
+using GameCore.Pooling;
 
 namespace GameCore.Statistics;
 

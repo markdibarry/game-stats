@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
-using GameCore.Statistics.Pooling;
+using GameCore.Pooling;
 
 namespace GameCore.Statistics;
 
