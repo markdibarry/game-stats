@@ -1,7 +1,7 @@
 ﻿using System;
 using GameCore.Pooling;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public sealed class TimedCondition : Condition
 {
@@ -49,9 +49,9 @@ public sealed class TimedCondition : Condition
         Stats?.RemoveTimedCondition(this);
     }
 
-    protected override bool Evaluate(Stats stats) => TimeLeft <= 0;
+    protected override bool Evaluate(StatSet stats) => TimeLeft <= 0;
 
-    public void OnProcess(Stats stats, double delta)
+    public void OnProcess(StatSet stats, double delta)
     {
         if (Evaluate(stats))
             return;

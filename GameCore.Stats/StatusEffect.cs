@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text.Json.Serialization;
 using GameCore.Pooling;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public sealed class StatusEffect : IPoolable, IConditional
 {
@@ -64,7 +64,7 @@ public sealed class StatusEffect : IPoolable, IConditional
         }
     }
     [JsonIgnore]
-    public Stats? Stats { get; private set; }
+    public StatSet? Stats { get; private set; }
     [JsonIgnore]
     public bool IsActive { get; private set; }
     [JsonIgnore]
@@ -149,7 +149,7 @@ public sealed class StatusEffect : IPoolable, IConditional
         return ActiveStackCount > 0;
     }
 
-    internal void Initialize(Stats stats, object? source, bool isImmune)
+    internal void Initialize(StatSet stats, object? source, bool isImmune)
     {
         if (Stats is not null)
             return;
@@ -236,13 +236,13 @@ public sealed class StatusEffect : IPoolable, IConditional
         Stacks.Add(stack);
     }
 
-    internal void AddStack(Stats stats, EffectStack newStack, object? source)
+    internal void AddStack(StatSet stats, EffectStack newStack, object? source)
     {
         int stacksToAdd = HandleNewStack(stats, newStack, source, ActiveStackCount);
         ActiveStackCount += stacksToAdd;
     }
 
-    private int HandleNewStack(Stats stats, EffectStack newStack, object? source, int activeStacks)
+    private int HandleNewStack(StatSet stats, EffectStack newStack, object? source, int activeStacks)
     {
         // If new stack has a source, brute force it
         if (source != null)
@@ -312,7 +312,7 @@ public sealed class StatusEffect : IPoolable, IConditional
         newStack.ReturnToPool();
         return activeStacksAdded;
 
-        int AddStackInternal(Stats stats, EffectStack stack, object? source, bool addToFront)
+        int AddStackInternal(StatSet stats, EffectStack stack, object? source, bool addToFront)
         {
             stack.Initialize(stats, this, source);
 
@@ -380,7 +380,7 @@ public sealed class StatusEffect : IPoolable, IConditional
     }
 
     internal void ReplaceStackBySource(
-        Stats stats,
+        StatSet stats,
         object oldSource,
         EffectStack newStack,
         object? newSource)
@@ -393,7 +393,7 @@ public sealed class StatusEffect : IPoolable, IConditional
         ActiveStackCount = activeStacks;
     }
 
-    internal void UpdateActive(Stats stats)
+    internal void UpdateActive(StatSet stats)
     {
         string effectTypeId = EffectTypeId;
         bool wasActive = IsActive;
@@ -407,7 +407,7 @@ public sealed class StatusEffect : IPoolable, IConditional
         else if (TotalStackCount == 0)
             stats.RemoveStatusEffect(effectTypeId);
 
-        void Activate(Stats stats, string effectTypeId)
+        void Activate(StatSet stats, string effectTypeId)
         {
             EffectDef.OnActivate?.Invoke(stats, this);
 
@@ -420,7 +420,7 @@ public sealed class StatusEffect : IPoolable, IConditional
             stats.RaiseStatusEffectChanged(effectTypeId);
         }
 
-        void Deactivate(Stats stats, string effectTypeId)
+        void Deactivate(StatSet stats, string effectTypeId)
         {
             EffectDef.OnDeactivate?.Invoke(stats, this);
 

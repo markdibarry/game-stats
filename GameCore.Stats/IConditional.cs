@@ -1,8 +1,8 @@
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public interface IConditional
 {
     object? Source { get; }
-    Stats? Stats { get; }
+    StatSet? Stats { get; }
     void OnConditionChanged(Condition condition);
 }

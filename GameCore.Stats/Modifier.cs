@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using GameCore.Pooling;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public sealed class Modifier : IPoolable, IConditional
 {
@@ -22,7 +22,7 @@ public sealed class Modifier : IPoolable, IConditional
     [JsonIgnore]
     public object? Source { get; internal set; }
     [JsonIgnore]
-    public Stats? Stats { get; private set; }
+    public StatSet? Stats { get; private set; }
 
     public static Modifier Create() => Pool.Get<Modifier>();
 
@@ -110,7 +110,7 @@ public sealed class Modifier : IPoolable, IConditional
         }
     }
 
-    internal void Initialize(Stats stats, object? source)
+    internal void Initialize(StatSet stats, object? source)
     {
         if (Stats is not null)
             return;

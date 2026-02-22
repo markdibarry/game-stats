@@ -1,4 +1,4 @@
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public enum CompareOp
 {

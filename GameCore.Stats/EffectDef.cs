@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public class EffectDef
 {
@@ -10,7 +10,7 @@ public class EffectDef
         EffectTypeId = statTypeId;
     }
 
-    public delegate void Effect(Stats stats, StatusEffect statusEffect);
+    public delegate void Effect(StatSet stats, StatusEffect statusEffect);
     public string EffectTypeId { get; }
     public int MaxStack { get; init; } = -1;
     /// <summary>

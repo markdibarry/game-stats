@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public static class StatOps
 {

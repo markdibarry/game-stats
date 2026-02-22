@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using GameCore.Pooling;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public class EffectLookup : Dictionary<string, StatusEffect>
 {
@@ -36,7 +36,7 @@ public class EffectLookup : Dictionary<string, StatusEffect>
         return statusEffect.IsActive;
     }
 
-    internal void InitializeAll(Stats stats)
+    internal void InitializeAll(StatSet stats)
     {
         foreach (StatusEffect statusEffect in Values)
         {
@@ -45,7 +45,7 @@ public class EffectLookup : Dictionary<string, StatusEffect>
         }
     }
 
-    internal void AddStack(Stats stats, EffectStack stack, object? source)
+    internal void AddStack(StatSet stats, EffectStack stack, object? source)
     {
         if (!EffectDefDB.TryGetValue(stack.EffectTypeId, out EffectDef? effectDef))
             return;
@@ -74,7 +74,7 @@ public class EffectLookup : Dictionary<string, StatusEffect>
         statusEffect.AddStack(stats, stack, source);
     }
 
-    internal void ReplaceStack(Stats stats, object oldSource, EffectStack newStack, object? newSource)
+    internal void ReplaceStack(StatSet stats, object oldSource, EffectStack newStack, object? newSource)
     {
         if (!EffectDefDB.TryGetValue(newStack.EffectTypeId, out EffectDef? effectDef))
             return;

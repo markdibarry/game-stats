@@ -2,7 +2,7 @@ using System;
 using System.Text.Json.Serialization;
 using GameCore.Pooling;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public class EffectStack : IPoolable, IConditional
 {
@@ -21,7 +21,7 @@ public class EffectStack : IPoolable, IConditional
     [JsonIgnore]
     public bool IsActive { get; private set; }
     [JsonIgnore]
-    public Stats? Stats { get; private set; }
+    public StatSet? Stats { get; private set; }
     [JsonIgnore]
     public StatusEffect? StatusEffect { get; set; }
 
@@ -75,7 +75,7 @@ public class EffectStack : IPoolable, IConditional
         }
     }
 
-    public void Initialize(Stats stats, StatusEffect statusEffect, object? source)
+    public void Initialize(StatSet stats, StatusEffect statusEffect, object? source)
     {
         if (Stats is not null)
             return;

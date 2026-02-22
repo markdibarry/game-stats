@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public struct Stat
 {

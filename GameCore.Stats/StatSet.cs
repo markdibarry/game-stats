@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using GameCore.Pooling;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
-public class Stats : IPoolable
+public class StatSet : IPoolable
 {
-    static Stats()
+    static StatSet()
     {
         s_calculateDefault = (stats, statTypeId, ignoreHidden) =>
         {
@@ -18,14 +18,14 @@ public class Stats : IPoolable
         s_isImmuneToStatusEffect = (stats, statTypeId) => false;
     }
 
-    public Stats()
+    public StatSet()
     {
         StatLookup = [];
         Modifiers = [];
         StatusEffects = [];
     }
 
-    public Stats(Dictionary<string, Stat> statLookup)
+    public StatSet(Dictionary<string, Stat> statLookup)
     {
         StatLookup = statLookup;
         Modifiers = [];
@@ -33,7 +33,7 @@ public class Stats : IPoolable
     }
 
     [JsonConstructor]
-    public Stats(
+    public StatSet(
         IReadOnlyDictionary<string, Stat> attributes,
         ModifierLookup modifiersWithoutSources,
         EffectLookup effectsWithoutSources
@@ -75,13 +75,13 @@ public class Stats : IPoolable
     [JsonInclude, JsonPropertyName(nameof(StatusEffects))]
     internal EffectLookup EffectsWithoutSources => (EffectLookup)GetStatusEffectsUnsafe(true);
 
-    public event Action<Stats, string>? StatChanged;
-    public event Action<Stats, string>? StatusEffectChanged;
-    public event Action<Stats, string>? EffectStackChanged;
+    public event Action<StatSet, string>? StatChanged;
+    public event Action<StatSet, string>? StatusEffectChanged;
+    public event Action<StatSet, string>? EffectStackChanged;
 
-    public delegate void ModifyDel(Stats stats, string statTypeId);
-    public delegate float CalculateDel(Stats stats, string statTypeId, bool ignoreHidden);
-    public delegate bool StatusEffectDel(Stats stats, string effectTypeId);
+    public delegate void ModifyDel(StatSet stats, string statTypeId);
+    public delegate float CalculateDel(StatSet stats, string statTypeId, bool ignoreHidden);
+    public delegate bool StatusEffectDel(StatSet stats, string effectTypeId);
 
     public static EffectDef RegisterEffect(string effectTypeId)
     {
@@ -124,18 +124,18 @@ public class Stats : IPoolable
     }
 
     /// <summary>
-    /// Creates a new Stats object using the collections provided as a base.
+    /// Creates a new StatSet object using the collections provided as a base.
     /// </summary>
     /// <param name="statLookup">The stat lookup.</param>
     /// <param name="modLookup">The modifier lookup</param>
     /// <param name="statusEffects">The effect lookup</param>
-    /// <returns>The new Stats object</returns>
-    public static Stats Create(
+    /// <returns>The new StatSet object</returns>
+    public static StatSet Create(
         Dictionary<string, Stat>? statLookup,
         ModifierLookup? modLookup,
         EffectLookup? statusEffects)
     {
-        Stats stats = Pool.Get<Stats>();
+        StatSet stats = Pool.Get<StatSet>();
 
         foreach (KeyValuePair<string, float> pair in s_statDefault)
         {
@@ -167,9 +167,9 @@ public class Stats : IPoolable
     /// Can be useful for comparing stat changes.
     /// </remarks>
     /// <returns>The new Stats object</returns>
-    public Stats Clone()
+    public StatSet Clone()
     {
-        Stats clone = Create(StatLookup, Modifiers, StatusEffects);
+        StatSet clone = Create(StatLookup, Modifiers, StatusEffects);
         return clone;
     }
 

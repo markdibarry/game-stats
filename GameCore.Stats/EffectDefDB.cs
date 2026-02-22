@@ -2,7 +2,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public static class EffectDefDB
 {

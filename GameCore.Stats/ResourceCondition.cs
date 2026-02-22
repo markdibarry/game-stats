@@ -1,7 +1,7 @@
 ﻿using System;
 using GameCore.Pooling;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public sealed class ResourceCondition : Condition
 {
@@ -49,7 +49,7 @@ public sealed class ResourceCondition : Condition
         IsPercent = resourceCondition.IsPercent;
     }
 
-    protected override bool Evaluate(Stats stats)
+    protected override bool Evaluate(StatSet stats)
     {
         int target = TargetValue;
 

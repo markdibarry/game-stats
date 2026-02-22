@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public static class ConditionDB
 {

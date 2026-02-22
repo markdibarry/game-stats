@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using GameCore.Pooling;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public class ModifierLookup : Dictionary<string, List<Modifier>>
 {
@@ -37,7 +37,7 @@ public class ModifierLookup : Dictionary<string, List<Modifier>>
         Clear();
     }
 
-    internal void AddMod(Stats stats, Modifier mod, object? source)
+    internal void AddMod(StatSet stats, Modifier mod, object? source)
     {
         mod.Initialize(stats, source);
 
@@ -59,7 +59,7 @@ public class ModifierLookup : Dictionary<string, List<Modifier>>
         stats.RaiseStatChanged(mod.StatTypeId);
     }
 
-    internal void InitializeAll(Stats stats)
+    internal void InitializeAll(StatSet stats)
     {
         foreach (List<Modifier> mods in Values)
         {
@@ -70,7 +70,7 @@ public class ModifierLookup : Dictionary<string, List<Modifier>>
         }
     }
 
-    internal void RemoveModBySource(Stats stats, string statTypeId, object? source)
+    internal void RemoveModBySource(StatSet stats, string statTypeId, object? source)
     {
         if (!TryGetValue(statTypeId, out List<Modifier>? mods))
             return;
@@ -84,7 +84,7 @@ public class ModifierLookup : Dictionary<string, List<Modifier>>
         }
     }
 
-    internal void RemoveMod(Stats stats, Modifier mod)
+    internal void RemoveMod(StatSet stats, Modifier mod)
     {
         if (!TryGetValue(mod.StatTypeId, out List<Modifier>? mods))
             return;
@@ -95,7 +95,7 @@ public class ModifierLookup : Dictionary<string, List<Modifier>>
             RemoveModAt(stats, mods, mod, index);
     }
 
-    private void RemoveModAt(Stats stats, List<Modifier> mods, Modifier mod, int index)
+    private void RemoveModAt(StatSet stats, List<Modifier> mods, Modifier mod, int index)
     {
         mods.RemoveAt(index);
         string statTypeId = mod.StatTypeId;

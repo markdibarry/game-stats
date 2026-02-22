@@ -2,7 +2,7 @@
 using System.Text.Json.Serialization;
 using GameCore.Pooling;
 
-namespace GameCore.Statistics;
+namespace GameCore.Stats;
 
 public abstract class Condition : IPoolable
 {
@@ -24,7 +24,7 @@ public abstract class Condition : IPoolable
     [JsonPropertyOrder(21)]
     public Condition? Or { get; set; }
     [JsonIgnore]
-    public Stats? Stats => Conditional?.Stats;
+    public StatSet? Stats => Conditional?.Stats;
 
     public static T Create<T>(Action<T> setup) where T : Condition, new()
     {
@@ -41,7 +41,7 @@ public abstract class Condition : IPoolable
             return Or?.CheckAllConditions(hasSource) ?? false;
     }
 
-    internal bool EvaluateAllConditions(Stats stats, bool hasSource = false)
+    internal bool EvaluateAllConditions(StatSet stats, bool hasSource = false)
     {
         if (Evaluate(stats) && !(SourceIgnored && hasSource))
             return And?.EvaluateAllConditions(stats, hasSource) ?? true;
@@ -168,7 +168,7 @@ public abstract class Condition : IPoolable
 
     protected abstract void UnsubscribeEvents();
 
-    protected abstract bool Evaluate(Stats stats);
+    protected abstract bool Evaluate(StatSet stats);
 
     /// <summary>
     /// Reverts condition data to initial user set values.
