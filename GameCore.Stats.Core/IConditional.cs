@@ -1,6 +1,6 @@
 namespace GameCore.Stats;
 
-public interface IConditional
+internal interface IConditional
 {
     object? Source { get; }
     StatSet? Stats { get; }

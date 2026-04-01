@@ -5,13 +5,13 @@ using GameCore.Pooling;
 
 namespace GameCore.Stats;
 
-public class StatSet : IPoolable
+public sealed class StatSet : IPoolable
 {
     static StatSet()
     {
         s_calculateDefault = (stats, statTypeId, ignoreHidden) =>
         {
-            Stat stat = stats.GetStat(statTypeId);
+            StatAttribute stat = stats.GetStat(statTypeId);
             IReadOnlyList<Modifier> mods = stats.GetModifiersOrEmpty(statTypeId);
             return Modifier.Calculate(mods, stat.BaseValue, ignoreHidden);
         };
@@ -20,26 +20,26 @@ public class StatSet : IPoolable
 
     public StatSet()
     {
-        StatLookup = [];
+        Attributes = [];
         Modifiers = [];
         StatusEffects = [];
     }
 
-    public StatSet(Dictionary<string, Stat> statLookup)
+    public StatSet(Dictionary<string, StatAttribute> attributes)
     {
-        StatLookup = statLookup;
+        Attributes = attributes;
         Modifiers = [];
         StatusEffects = [];
     }
 
     [JsonConstructor]
     public StatSet(
-        IReadOnlyDictionary<string, Stat> attributes,
+        Dictionary<string, StatAttribute> attributes,
         ModifierLookup modifiersWithoutSources,
         EffectLookup effectsWithoutSources
     )
     {
-        StatLookup = (Dictionary<string, Stat>)attributes;
+        Attributes = attributes;
         Modifiers = modifiersWithoutSources;
         StatusEffects = effectsWithoutSources;
     }
@@ -53,27 +53,30 @@ public class StatSet : IPoolable
     private HashSet<TimedCondition>? _timedConditions;
     private HashSet<ResourceCondition>? _resourceConditions;
 
-    [JsonIgnore]
-    public object? StatsOwner { get; private set; }
-    protected Dictionary<string, Stat> StatLookup { get; init; }
-    protected ModifierLookup Modifiers { get; init; }
-    protected EffectLookup StatusEffects { get; init; }
-
     /// <summary>
-    /// Stat lookup for serialization.
+    /// The stats owner.
     /// </summary>
-    [JsonInclude]
-    internal IReadOnlyDictionary<string, Stat> Attributes => StatLookup;
+    [JsonIgnore]
+    public object? Context { get; private set; }
+    /// <summary>
+    /// Stat lookup.
+    /// </summary>
+    public Dictionary<string, StatAttribute> Attributes { get; init; }
+    [JsonIgnore]
+    public ModifierLookup Modifiers { get; init; }
+    [JsonIgnore]
+    public EffectLookup StatusEffects { get; init; }
+
     /// <summary>
     /// Modifiers for serialization.
     /// </summary>
     [JsonInclude, JsonPropertyName(nameof(Modifiers))]
-    internal ModifierLookup ModifiersWithoutSources => (ModifierLookup)GetModifiersUnsafe(true);
+    public ModifierLookup ModifiersWithoutSources => (ModifierLookup)GetModifiersUnsafe(true);
     /// <summary>
     /// Status effects for serialization.
     /// </summary>
     [JsonInclude, JsonPropertyName(nameof(StatusEffects))]
-    internal EffectLookup EffectsWithoutSources => (EffectLookup)GetStatusEffectsUnsafe(true);
+    public EffectLookup EffectsWithoutSources => (EffectLookup)GetStatusEffectsUnsafe(true);
 
     public event Action<StatSet, string>? StatChanged;
     public event Action<StatSet, string>? StatusEffectChanged;
@@ -86,11 +89,6 @@ public class StatSet : IPoolable
     public static EffectDef RegisterEffect(string effectTypeId)
     {
         return EffectDefDB.Register(effectTypeId);
-    }
-
-    public static void RegisterCondition<T>(string conditionTypeId) where T : Condition, new()
-    {
-        ConditionDB.Register<T>(conditionTypeId);
     }
 
     /// <summary>
@@ -126,12 +124,12 @@ public class StatSet : IPoolable
     /// <summary>
     /// Creates a new StatSet object using the collections provided as a base.
     /// </summary>
-    /// <param name="statLookup">The stat lookup.</param>
+    /// <param name="attributes">The stat lookup.</param>
     /// <param name="modLookup">The modifier lookup</param>
     /// <param name="statusEffects">The effect lookup</param>
     /// <returns>The new StatSet object</returns>
     public static StatSet Create(
-        Dictionary<string, Stat>? statLookup,
+        Dictionary<string, StatAttribute>? attributes,
         ModifierLookup? modLookup,
         EffectLookup? statusEffects)
     {
@@ -139,10 +137,10 @@ public class StatSet : IPoolable
 
         foreach (KeyValuePair<string, float> pair in s_statDefault)
         {
-            if (statLookup != null && statLookup.TryGetValue(pair.Key, out Stat stat))
-                stats.StatLookup[pair.Key] = stat;
+            if (attributes != null && attributes.TryGetValue(pair.Key, out StatAttribute stat))
+                stats.Attributes[pair.Key] = stat;
             else
-                stats.StatLookup[pair.Key] = new Stat(pair.Value);
+                stats.Attributes[pair.Key] = new StatAttribute(pair.Value);
         }
 
         modLookup?.CopyTo(stats.Modifiers, false);
@@ -150,91 +148,66 @@ public class StatSet : IPoolable
         return stats;
     }
 
-    public void ClearObject()
-    {
-        StatsOwner = null;
-        Modifiers.ClearObject();
-        StatusEffects.ClearObject();
-        StatLookup.Clear();
-        _timedConditions?.Clear();
-        _resourceConditions?.Clear();
-    }
-
     /// <summary>
-    /// Clones the Stats object.
+    /// Creates a new StatSet object using the existing StatSet as a base.
     /// </summary>
     /// <remarks>
     /// Can be useful for comparing stat changes.
     /// </remarks>
-    /// <returns>The new Stats object</returns>
-    public StatSet Clone()
+    /// <returns>The new StatSet object</returns>
+    public static StatSet Create(StatSet statSet)
     {
-        StatSet clone = Create(StatLookup, Modifiers, StatusEffects);
-        return clone;
+        return Create(statSet.Attributes, statSet.Modifiers, statSet.StatusEffects);
     }
 
-    /// <summary>
-    /// Copies all Stats to a new Dictionary<string, Stat>.
-    /// </summary>
-    /// <param name="clone">The collection to clone to</param>
-    public void CopyStatLookupTo(Dictionary<string, Stat> clone)
+    public void ClearObject()
     {
-        clone.Clear();
+        Context = null;
+        Modifiers.ClearObject();
+        StatusEffects.ClearObject();
+        Attributes.Clear();
 
-        foreach (var kvp in StatLookup)
-            clone.Add(kvp.Key, kvp.Value);
+        if (_timedConditions != null)
+        {
+            foreach (var cond in _timedConditions)
+                cond.ReturnToPool();
+
+            _timedConditions.Clear();
+        }
+        _timedConditions?.Clear();
+        _resourceConditions?.Clear();
     }
 
-    /// <summary>
-    /// Copies all Stats modifiers to a new ModifierLookup.
-    /// </summary>
-    /// <param name="clone">The ModifierLookup to clone to</param>
-    /// <param name="ignoreModsWithSource">If true, does not copy modifiers with a source.</param>
-    public void CopyModifierLookupTo(ModifierLookup clone, bool ignoreModsWithSource)
+    public void Initialize(object? context)
     {
-        Modifiers.CopyTo(clone, ignoreModsWithSource);
-    }
-
-    /// <summary>
-    /// Copies all Stats effects to a new EffectLookup.
-    /// </summary>
-    /// <param name="clone">The EffectLookup to clone to</param>
-    /// <param name="ignoreModsWithSource">If true, does not copy modifiers with a source.</param>
-    public void CopyStatusEffectsTo(EffectLookup clone, bool ignoreStacksWithSource)
-    {
-        StatusEffects.CopyTo(clone, ignoreStacksWithSource);
-    }
-
-    public void Initialize(object? statsOwner)
-    {
-        StatsOwner = statsOwner;
+        Context = context;
         Modifiers.InitializeAll(this);
         StatusEffects.InitializeAll(this);
     }
 
-    public Stat GetStat(string statTypeId)
+    public StatAttribute GetStat(string statTypeId)
     {
-        if (StatLookup.TryGetValue(statTypeId, out Stat stat))
+        if (Attributes.TryGetValue(statTypeId, out StatAttribute stat))
             return stat;
 
         if (s_statDefault.TryGetValue(statTypeId, out float defaultValue))
-            return new Stat(defaultValue);
+            return new StatAttribute(defaultValue);
 
         return stat;
     }
 
     public void SetStatBase(string statTypeId, float baseValue)
     {
-        Stat stat = GetStat(statTypeId);
-        StatLookup[statTypeId] = stat with { BaseValue = baseValue };
+        StatAttribute stat = GetStat(statTypeId);
+        Attributes[statTypeId] = stat with { BaseValue = baseValue };
         RaiseStatChanged(statTypeId);
         TryCallModifyDel(statTypeId);
     }
 
     public void SetStatCurrent(string statTypeId, float currentValue)
     {
-        Stat stat = GetStat(statTypeId);
-        StatLookup[statTypeId] = stat with { CurrentValue = currentValue };
+        StatAttribute stat = GetStat(statTypeId);
+        Attributes[statTypeId] = stat with { CurrentValue = currentValue };
         RaiseStatChanged(statTypeId);
         TryCallModifyDel(statTypeId);
     }
@@ -247,7 +220,7 @@ public class StatSet : IPoolable
     /// <returns>The result of the calculation</returns>
     public float Calculate(string statTypeId, bool ignoreHidden = false)
     {
-        Stat stat = GetStat(statTypeId);
+        StatAttribute stat = GetStat(statTypeId);
         IReadOnlyList<Modifier> mods = GetModifiersOrEmpty(statTypeId);
 
         if (!s_statToCalculateDel.TryGetValue(statTypeId, out CalculateDel? func))
@@ -289,7 +262,7 @@ public class StatSet : IPoolable
         string statTypeId = mod.StatTypeId;
 
         // If Stats is not initialized, add it without checks.
-        if (StatsOwner == null)
+        if (Context == null)
         {
             if (!Modifiers.TryGetValue(statTypeId, out var mods))
             {
@@ -329,7 +302,7 @@ public class StatSet : IPoolable
         TryCallModifyDel(statTypeId);
     }
 
-    public IReadOnlyDictionary<string, StatusEffect> GetStatusEffectsUnsafe(bool ignoreStacksWithSource)
+    public IReadOnlyDictionary<string, StatusEffect> GetStatusEffectsUnsafe(bool ignoreStacksWithSource = false)
     {
         if (!ignoreStacksWithSource)
             return StatusEffects;
@@ -367,13 +340,14 @@ public class StatSet : IPoolable
     /// If the stack provided is meant to be reused, clone the stack using EffectStack.Clone().
     /// </remarks>
     /// <param name="stack">The stack to be added.</param>
+    /// <param name="stackMode">The mode for how the stack should be added.</param>
     /// <param name="source">The source the stack is tied to.</param>
-    public void AddStack(EffectStack stack, object? source)
+    public void AddStack(EffectStack stack, StackMode stackMode = StackMode.None, object? source = null)
     {
         string effectTypeId = stack.EffectTypeId;
 
         // If Stats is not initialized, add it without checks.
-        if (StatsOwner == null)
+        if (Context == null)
         {
             if (!StatusEffects.TryGetValue(effectTypeId, out var effect))
             {
@@ -385,8 +359,14 @@ public class StatSet : IPoolable
         }
         else
         {
-            StatusEffects.AddStack(this, stack, source);
+            StatusEffects.AddStack(this, stack, stackMode, source);
         }
+    }
+
+    public void AddStack(string effectTypeId, StackMode stackMode = StackMode.None, object? source = null)
+    {
+        EffectStack stack = EffectStack.Create(effectTypeId);
+        AddStack(stack, stackMode, source);
     }
 
     /// <summary>
@@ -421,14 +401,20 @@ public class StatSet : IPoolable
     }
 
     /// <summary>
-    /// Finds any stacks with the provided source, removes them, and adds a new stack.
+    /// Finds any stacks with the provided source, removes them, and adds a new stack with the new source.
     /// </summary>
     /// <param name="oldSource">The source to match when removing</param>
     /// <param name="newStack">The new stack to add</param>
     /// <param name="newSource">The source the new stack should be tied to</param>
-    public void ReplaceStack(object oldSource, EffectStack newStack, object? newSource)
+    public void ReplaceStack(EffectStack newStack, StackMode stackMode, object oldSource, object? newSource)
     {
-        StatusEffects.ReplaceStack(this, oldSource, newStack, newSource);
+        StatusEffects.ReplaceStack(this, newStack, stackMode, oldSource, newSource);
+    }
+
+    public void ReplaceStack(string effectTypeId, StackMode stackMode, object oldSource, object? newSource)
+    {
+        EffectStack stack = EffectStack.Create(effectTypeId);
+        ReplaceStack(stack, stackMode, oldSource, newSource);
     }
 
     /// <summary>
@@ -445,15 +431,13 @@ public class StatSet : IPoolable
     }
 
     /// <summary>
-    /// Manually checks and updates whether a StatusEffect's active status.
+    /// Manually checks and updates whether a StatusEffect is active.
     /// </summary>
     /// <param name="effectTypeId">The effect type identifier</param>
     public void UpdateStatusEffect(string effectTypeId)
     {
-        if (!StatusEffects.TryGetValue(effectTypeId, out StatusEffect? statusEffect))
-            return;
-
-        statusEffect.UpdateActive(this);
+        if (StatusEffects.TryGetValue(effectTypeId, out StatusEffect? statusEffect))
+            statusEffect.UpdateActive(this);
     }
 
     /// <summary>
@@ -469,27 +453,31 @@ public class StatSet : IPoolable
             condition.OnProcess(this, delta);
     }
 
-    protected internal void AddTimedCondition(TimedCondition timedCondition)
+    internal void AddTimedCondition(TimedCondition timedCondition)
     {
         _timedConditions ??= [];
         _timedConditions.Add(timedCondition);
     }
 
-    protected internal void AddResourceCondition(ResourceCondition resourceCondition)
+    internal void AddResourceCondition(ResourceCondition resourceCondition)
     {
         _resourceConditions ??= [];
         _resourceConditions.Add(resourceCondition);
     }
 
-    protected internal void RemoveTimedCondition(TimedCondition timedCondition)
+    internal void RemoveTimedCondition(TimedCondition timedCondition)
     {
-        _timedConditions ??= [];
+        if (_timedConditions == null)
+            return;
+
         _timedConditions.Remove(timedCondition);
     }
 
-    protected internal void RemoveResourceCondition(ResourceCondition resourceCondition)
+    internal void RemoveResourceCondition(ResourceCondition resourceCondition)
     {
-        _resourceConditions ??= [];
+        if (_resourceConditions == null)
+            return;
+
         _resourceConditions.Remove(resourceCondition);
     }
 

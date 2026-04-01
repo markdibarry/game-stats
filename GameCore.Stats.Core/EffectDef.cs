@@ -3,39 +3,33 @@ using System.Collections.Generic;
 
 namespace GameCore.Stats;
 
+public delegate void EffectDel(StatSet stats, StatusEffect statusEffect);
+
 public class EffectDef
 {
     public EffectDef(string statTypeId)
     {
         EffectTypeId = statTypeId;
+        CustomEffects = [];
+        Modifiers = [];
     }
 
-    public delegate void Effect(StatSet stats, StatusEffect statusEffect);
     public string EffectTypeId { get; }
-    public int MaxStack { get; init; } = -1;
-    /// <summary>
-    /// Controls how the status effect handles adding a new stack.
-    /// </summary>
-    public string StackMode { get; private set; } = StackModes.Reup;
-    /// <summary>
-    /// If true, when the status effect duration times out, the stack will decrease by 1 and the duration will be
-    /// refreshed. Ignored if StackMode is set to 'Active'.
-    /// </summary>
-    public bool ReupOnTimeout { get; init; }
+    public int MaxStack { get; private set; } = -1;
     public Condition? DefaultDuration { get; private set; }
-    public List<EffectOnCondition> CustomEffects { get; } = [];
-    public Effect? OnActivate { get; private set; }
-    public Effect? OnAddStack { get; private set; }
-    public Effect? OnRemoveStack { get; private set; }
-    public Effect? OnDeactivate { get; private set; }
-    public List<Modifier> Modifiers { get; } = [];
+    public List<EffectOnCondition> CustomEffects { get; }
+    public EffectDel? OnActivate { get; private set; }
+    public EffectDel? OnAddStack { get; private set; }
+    public EffectDel? OnRemoveStack { get; private set; }
+    public EffectDel? OnDeactivate { get; private set; }
+    public List<Modifier> Modifiers { get; }
 
     /// <summary>
     /// Adds a modifier that will be applied when this effect is active.
     /// </summary>
     /// <param name="mod">A delegate to configure the modifier to be applied.</param>
     /// <returns>The effect definition</returns>
-    public EffectDef AddModifier(Action<Modifier> modDelegate)
+    public EffectDef WithModifier(Action<Modifier> modDelegate)
     {
         Modifier mod = Modifier.Create();
         modDelegate(mod);
@@ -48,7 +42,7 @@ public class EffectDef
     /// </summary>
     /// <param name="mod">The modifier to be applied</param>
     /// <returns>The effect definition</returns>
-    public EffectDef AddModifier(Modifier mod)
+    public EffectDef WithModifier(Modifier mod)
     {
         Modifiers.Add(mod);
         return this;
@@ -60,7 +54,7 @@ public class EffectDef
     /// <param name="condition">The Condition</param>
     /// <param name="effect">The effect delegate</param>
     /// <returns>The effect definition</returns>
-    public EffectDef AddCustomEffect(Condition condition, Effect effect)
+    public EffectDef WithCustomEffect(Condition condition, EffectDel effect)
     {
         CustomEffects.Add(new EffectOnCondition(effect, condition));
         return this;
@@ -71,7 +65,7 @@ public class EffectDef
     /// </summary>
     /// <param name="condition">The Condition</param>
     /// <returns>The effect definition</returns>
-    public EffectDef SetDefaultDuration(Condition condition)
+    public EffectDef WithDefaultDuration(Condition condition)
     {
         DefaultDuration = condition;
         return this;
@@ -82,7 +76,7 @@ public class EffectDef
     /// </summary>
     /// <param name="effect">The delegate</param>
     /// <returns>The effect definition</returns>
-    public EffectDef SetOnActivate(Effect effect)
+    public EffectDef WithOnActivate(EffectDel effect)
     {
         OnActivate = effect;
         return this;
@@ -93,7 +87,7 @@ public class EffectDef
     /// </summary>
     /// <param name="effect">The delegate</param>
     /// <returns>The effect definition</returns>
-    public EffectDef SetOnAddStack(Effect effect)
+    public EffectDef WithOnAddStack(EffectDel effect)
     {
         OnAddStack = effect;
         return this;
@@ -104,7 +98,7 @@ public class EffectDef
     /// </summary>
     /// <param name="effect">The delegate</param>
     /// <returns>The effect definition</returns>
-    public EffectDef SetOnRemoveStack(Effect effect)
+    public EffectDef WithOnRemoveStack(EffectDel effect)
     {
         OnRemoveStack = effect;
         return this;
@@ -115,55 +109,32 @@ public class EffectDef
     /// </summary>
     /// <param name="effect">The delegate</param>
     /// <returns>The effect definition</returns>
-    public EffectDef SetOnDeactivate(Effect effect)
+    public EffectDef WithOnDeactivate(EffectDel effect)
     {
         OnDeactivate = effect;
         return this;
     }
 
     /// <summary>
-    /// Sets the stack mode of the status effect.
+    /// Sets the max allowable stacks for the effect.
     /// </summary>
-    /// <remarks>
-    /// For a list of valid values and their definitions see the static class <see cref="StackModes"/>.
-    /// </remarks>
-    /// <param name="stackMode"></param>
-    /// <returns></returns>
-    public EffectDef SetStackMode(string stackMode)
+    /// <param name="max">The max number of stacks.</param>
+    /// <returns>The effect definition</returns>
+    public EffectDef WithMaxStacks(int max)
     {
-        StackMode = stackMode;
+        MaxStack = max;
         return this;
     }
 }
 
 public class EffectOnCondition
 {
-    public EffectOnCondition(EffectDef.Effect effect, Condition condition)
+    public EffectOnCondition(EffectDel effect, Condition condition)
     {
         Effect = effect;
         Condition = condition;
     }
 
-    public EffectDef.Effect Effect { get; set; }
+    public EffectDel Effect { get; set; }
     public Condition Condition { get; set; }
-}
-
-public static class StackModes
-{
-    /// <summary>
-    /// Additional stacks will have their value added to the first existing stack without a source.
-    /// </summary>
-    public const string None = "None";
-    /// <summary>
-    /// Additional stacks will refresh the conditions of the first existing stack without a source.
-    /// </summary>
-    public const string Reup = "Reup";
-    /// <summary>
-    /// Additional stacks will extend the TimedCondition of the first existing stack without a source.
-    /// </summary>
-    public const string Extend = "Extend";
-    /// <summary>
-    /// All effect stacks will be independently tracked.
-    /// </summary>
-    public const string Multi = "Multi";
 }

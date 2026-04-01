@@ -19,7 +19,7 @@ public class EffectLookup : Dictionary<string, StatusEffect>
 
         foreach (StatusEffect statusEffect in Values)
         {
-            var clone = statusEffect.Clone(ignoreStacksWithSource);
+            var clone = StatusEffect.Create(statusEffect, ignoreStacksWithSource);
 
             if (clone.TotalStackCount == 0)
                 clone.ReturnToPool();
@@ -45,7 +45,7 @@ public class EffectLookup : Dictionary<string, StatusEffect>
         }
     }
 
-    internal void AddStack(StatSet stats, EffectStack stack, object? source)
+    internal void AddStack(StatSet stats, EffectStack stack, StackMode stackMode, object? source)
     {
         if (!EffectDefDB.TryGetValue(stack.EffectTypeId, out EffectDef? effectDef))
             return;
@@ -71,10 +71,10 @@ public class EffectLookup : Dictionary<string, StatusEffect>
             Add(stack.EffectTypeId, statusEffect);
         }
 
-        statusEffect.AddStack(stats, stack, source);
+        statusEffect.AddStack(stats, stack, stackMode, source);
     }
 
-    internal void ReplaceStack(StatSet stats, object oldSource, EffectStack newStack, object? newSource)
+    internal void ReplaceStack(StatSet stats, EffectStack newStack, StackMode stackMode, object oldSource, object? newSource)
     {
         if (!EffectDefDB.TryGetValue(newStack.EffectTypeId, out EffectDef? effectDef))
             return;
@@ -90,7 +90,7 @@ public class EffectLookup : Dictionary<string, StatusEffect>
         if (TryGetValue(newStack.EffectTypeId, out StatusEffect? statusEffect))
         {
             if (shouldAddNew)
-                statusEffect.ReplaceStackBySource(stats, oldSource, newStack, newSource);
+                statusEffect.ReplaceStackBySource(stats, newStack, stackMode, oldSource, newSource);
             else
                 statusEffect.RemoveStacksBySource(oldSource);
         }
@@ -101,7 +101,7 @@ public class EffectLookup : Dictionary<string, StatusEffect>
                 statusEffect = StatusEffect.Create(effectDef);
                 statusEffect.Initialize(stats, newSource, isImmune);
                 Add(newStack.EffectTypeId, statusEffect);
-                statusEffect.AddStack(stats, newStack, newSource);
+                statusEffect.AddStack(stats, newStack, stackMode, newSource);
             }
         }
 

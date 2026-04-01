@@ -1,36 +1,37 @@
-﻿using System;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using GameCore.Pooling;
 
 namespace GameCore.Stats;
 
+[JsonConverter(typeof(ConditionJsonConverter))]
 public abstract class Condition : IPoolable
 {
     private Condition? _parent;
 
-    protected IConditional? Conditional { get; private set; }
-
-    [JsonIgnore]
-    public bool Result { get; private set; }
-    [JsonPropertyOrder(-3)]
-    public bool ReupOnMet { get; set; }
+    internal IConditional? Conditional { get; set; }
+    public StatSet? Stats => Conditional?.Stats;
+    public bool Result { get; protected set; }
+    public bool AutoRefresh { get; set; }
     /// <summary>
     /// Ignore if Conditional has source
     /// </summary>
-    [JsonPropertyOrder(-2)]
     public bool SourceIgnored { get; set; }
-    [JsonPropertyOrder(20)]
     public Condition? And { get; set; }
-    [JsonPropertyOrder(21)]
     public Condition? Or { get; set; }
-    [JsonIgnore]
-    public StatSet? Stats => Conditional?.Stats;
 
-    public static T Create<T>(Action<T> setup) where T : Condition, new()
+    public virtual void ClearObject()
     {
-        T cond = Pool.Get<T>();
-        setup(cond);
-        return cond;
+        Uninitialize();
+        Result = false;
+        _parent = null;
+        And?.ReturnToPool();
+        And = null;
+        Or?.ReturnToPool();
+        Or = null;
+
+        Conditional = null;
+        AutoRefresh = false;
+        SourceIgnored = false;
     }
 
     public bool CheckAllConditions(bool hasSource = false)
@@ -49,47 +50,27 @@ public abstract class Condition : IPoolable
             return Or?.EvaluateAllConditions(stats, hasSource) ?? false;
     }
 
-    public T? GetFirstCondition<T>() where T : Condition, new()
+    public TCond? GetFirstCondition<TCond>() where TCond : Condition, new()
     {
-        if (this is T t)
+        if (this is TCond t)
             return t;
 
-        if (And?.GetFirstCondition<T>() is T andResult)
+        if (And?.GetFirstCondition<TCond>() is TCond andResult)
             return andResult;
 
-        if (Or?.GetFirstCondition<T>() is T orResult)
+        if (Or?.GetFirstCondition<TCond>() is TCond orResult)
             return orResult;
 
         return null;
     }
 
-    public void ClearObject()
+    internal virtual Condition Clone()
     {
-        Uninitialize();
-        Result = false;
-        _parent = null;
+        if (Pool.GetSameTypeOrNull(this) is not Condition clone)
+            clone = ConditionDB.GetNew(this);
 
-        if (And is not null)
-        {
-            And.ReturnToPool();
-            And = null;
-        }
-
-        if (Or is not null)
-        {
-            Or.ReturnToPool();
-            Or = null;
-        }
-
-        Conditional = null;
-        ReupOnMet = false;
-        SourceIgnored = false;
-        ClearData();
-    }
-
-    public Condition Clone()
-    {
-        Condition clone = CloneSingle();
+        clone.AutoRefresh = AutoRefresh;
+        clone.SourceIgnored = SourceIgnored;
 
         if (And is not null)
             clone.And = And.Clone();
@@ -100,40 +81,29 @@ public abstract class Condition : IPoolable
         return clone;
     }
 
-    private Condition CloneSingle()
-    {
-        if (Pool.GetSameTypeOrNull(this) is not Condition clone)
-            clone = ConditionDB.GetNew(this);
-
-        clone.ReupOnMet = ReupOnMet;
-        clone.SourceIgnored = SourceIgnored;
-        clone.CopyData(this);
-        return clone;
-    }
-
     /// <summary>
     /// Recursively calls up until it returns the top-most condition.
     /// </summary>
     /// <returns></returns>
-    public Condition GetHeadCondition()
+    internal Condition GetHeadCondition()
     {
         return _parent?.GetHeadCondition() ?? this;
     }
 
-    public void Reup()
+    internal void Refresh()
     {
-        ResetData();
+        RefreshData();
         UpdateResult();
     }
 
-    public void ReupAllData()
+    internal void RefreshAllData()
     {
-        And?.ResetData();
-        Or?.ResetData();
-        ResetData();
+        And?.RefreshAllData();
+        Or?.RefreshAllData();
+        RefreshData();
     }
 
-    public void Initialize(IConditional owner, Condition? parent)
+    internal void Initialize(IConditional owner, Condition? parent)
     {
         if (Conditional != null)
             return;
@@ -149,7 +119,7 @@ public abstract class Condition : IPoolable
         UpdateResult();
     }
 
-    public void Uninitialize()
+    internal void Uninitialize()
     {
         if (Conditional == null)
             return;
@@ -164,34 +134,12 @@ public abstract class Condition : IPoolable
         Result = false;
     }
 
-    protected abstract void SubscribeEvents();
-
-    protected abstract void UnsubscribeEvents();
-
-    protected abstract bool Evaluate(StatSet stats);
-
-    /// <summary>
-    /// Reverts condition data to initial user set values.
-    /// </summary>
-    protected abstract void ResetData();
-
-    /// <summary>
-    /// Clears all condition data.
-    /// </summary>
-    protected abstract void ClearData();
-
-    /// <summary>
-    /// Used to assign values for a derived Condition object.
-    /// </summary>
-    /// <param name="source">The condition to copy values from.</param>
-    protected abstract void CopyData(Condition source);
-
     /// <summary>
     /// Updates the Result flag and returns true if the result is different
     /// than the previous value.
     /// </summary>
     /// <returns>The result of whether the condition was updated or not.</returns>
-    protected bool UpdateResult()
+    private bool UpdateResult()
     {
         if (Stats == null)
             return false;
@@ -207,7 +155,7 @@ public abstract class Condition : IPoolable
         return false;
     }
 
-    protected void RaiseConditionChanged()
+    protected void UpdateCondition()
     {
         if (!UpdateResult())
             return;
@@ -215,17 +163,28 @@ public abstract class Condition : IPoolable
         Condition condition = GetHeadCondition();
         Conditional?.OnConditionChanged(condition);
     }
+
+    /// <summary>
+    /// Reverts condition data to initial user set values.
+    /// </summary>
+    protected abstract void RefreshData();
+
+    protected abstract bool Evaluate(StatSet stats);
+
+    protected abstract void SubscribeEvents();
+
+    protected abstract void UnsubscribeEvents();
 }
 
 public static class ConditionExtensions
 {
-    public static T SetOr<T>(this T condition, Condition or) where T : Condition
+    public static T WithOr<T>(this T condition, Condition or) where T : Condition
     {
         condition.Or = or;
         return condition;
     }
 
-    public static T SetAnd<T>(this T condition, Condition and) where T : Condition
+    public static T WithAnd<T>(this T condition, Condition and) where T : Condition
     {
         condition.And = and;
         return condition;
@@ -241,15 +200,15 @@ public static class ConditionExtensions
     /// <param name="condition"></param>
     /// <param name="enable"></param>
     /// <returns></returns>
-    public static T SetSourceIgnored<T>(this T condition, bool enable) where T : Condition
+    public static T WithIgnoreSource<T>(this T condition) where T : Condition
     {
-        condition.SourceIgnored = enable;
+        condition.SourceIgnored = true;
         return condition;
     }
 
-    public static T SetReupOnMet<T>(this T condition, bool enable) where T : Condition
+    public static T WithRefreshOnMet<T>(this T condition) where T : Condition
     {
-        condition.ReupOnMet = enable;
+        condition.AutoRefresh = true;
         return condition;
     }
 }

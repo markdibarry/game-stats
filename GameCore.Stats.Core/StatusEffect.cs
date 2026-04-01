@@ -32,37 +32,14 @@ public sealed class StatusEffect : IPoolable, IConditional
     }
 
     [JsonIgnore]
-    public object? Source => null;
+    object? IConditional.Source => null;
     public string EffectTypeId { get; set; }
     public List<Condition>? CustomConditions { get; set; }
     public List<EffectStack> Stacks { get; }
     [JsonIgnore]
     public int TotalStackCount => Stacks.Count;
     [JsonIgnore]
-    public int ActiveStackCount
-    {
-        get => field;
-        private set
-        {
-            int prevVal = field;
-
-            field = value;
-
-            if (field < 0)
-                throw new Exception("ActiveStackCount should never be less than 0.");
-
-            if (Stats == null)
-                return;
-
-            if (prevVal > 0 && field > prevVal)
-                EffectDef.OnAddStack?.Invoke(Stats, this);
-
-            Stats.RaiseEffectStackChanged(EffectTypeId);
-
-            if (prevVal > 0 && field == 0 || prevVal == 0 && field > 0)
-                UpdateActive(Stats);
-        }
-    }
+    public int TotalActiveStackCount { get; private set; }
     [JsonIgnore]
     public StatSet? Stats { get; private set; }
     [JsonIgnore]
@@ -70,7 +47,7 @@ public sealed class StatusEffect : IPoolable, IConditional
     [JsonIgnore]
     public EffectDef EffectDef { get; private set; }
 
-    public static StatusEffect Create(string effectTypeId)
+    internal static StatusEffect Create(string effectTypeId)
     {
         if (!EffectDefDB.TryGetValue(effectTypeId, out EffectDef? effectDef))
             throw new Exception($"No definition registered for \"{effectTypeId}\".");
@@ -78,7 +55,7 @@ public sealed class StatusEffect : IPoolable, IConditional
         return Create(effectDef);
     }
 
-    public static StatusEffect Create(EffectDef effectDef)
+    internal static StatusEffect Create(EffectDef effectDef)
     {
         StatusEffect statusEffect = Pool.Get<StatusEffect>();
         statusEffect.EffectTypeId = effectDef.EffectTypeId;
@@ -98,29 +75,29 @@ public sealed class StatusEffect : IPoolable, IConditional
         return statusEffect;
     }
 
-    public StatusEffect Clone(bool ignoreStacksWithSource)
+    internal static StatusEffect Create(StatusEffect statusEffect, bool ignoreStacksWithSource)
     {
         StatusEffect clone = Pool.Get<StatusEffect>();
-        clone.EffectTypeId = EffectTypeId;
-        clone.EffectDef = EffectDef;
+        clone.EffectTypeId = statusEffect.EffectTypeId;
+        clone.EffectDef = statusEffect.EffectDef;
 
-        if (CustomConditions is not null)
+        if (statusEffect.CustomConditions is not null)
         {
             clone.CustomConditions = ListPool.Get<Condition>();
 
-            foreach (Condition condition in CustomConditions)
+            foreach (Condition condition in statusEffect.CustomConditions)
             {
                 Condition cloneCondition = condition.Clone();
                 clone.CustomConditions.Add(cloneCondition);
             }
         }
 
-        foreach (EffectStack stack in Stacks)
+        foreach (EffectStack stack in statusEffect.Stacks)
         {
             if (stack.Source != null && ignoreStacksWithSource)
                 continue;
 
-            clone.Stacks.Add(stack.Clone());
+            clone.Stacks.Add(EffectStack.Create(stack));
         }
 
         return clone;
@@ -144,29 +121,28 @@ public sealed class StatusEffect : IPoolable, IConditional
         EffectDef = null!;
     }
 
-    public bool HasActiveStacks()
-    {
-        return ActiveStackCount > 0;
-    }
-
     internal void Initialize(StatSet stats, object? source, bool isImmune)
     {
         if (Stats is not null)
             return;
 
         Stats = stats;
+        bool hasNonMultiStack = false;
 
-        foreach (var stack in Stacks)
+        foreach (EffectStack stack in Stacks)
         {
             stack.Initialize(stats, this, source);
 
             if (stack.IsActive)
-                ActiveStackCount++;
+                UpdateActiveStackCount(TotalActiveStackCount + 1);
+
+            if (stack.CustomConditions == null)
+                hasNonMultiStack = true;
         }
 
-        IsActive = !isImmune && HasActiveStacks();
+        IsActive = !isImmune && TotalActiveStackCount > 0;
 
-        if (IsActive && CustomConditions is not null)
+        if (IsActive && CustomConditions is not null && hasNonMultiStack)
         {
             foreach (Condition condition in CustomConditions)
                 condition.Initialize(this, null);
@@ -190,7 +166,7 @@ public sealed class StatusEffect : IPoolable, IConditional
         Stats = null;
     }
 
-    public void OnConditionChanged(Condition condition)
+    void IConditional.OnConditionChanged(Condition condition)
     {
         int index = CustomConditions?.IndexOf(condition) ?? -1;
 
@@ -205,13 +181,13 @@ public sealed class StatusEffect : IPoolable, IConditional
             EffectDef.CustomEffects[index].Effect.Invoke(Stats, this);
         }
 
-        if (condition.ReupOnMet)
-            condition.Reup();
+        if (condition.AutoRefresh)
+            condition.Refresh();
     }
 
     internal void OnStackChanged(EffectStack stack)
     {
-        int activeStacks = ActiveStackCount;
+        int activeStacks = TotalActiveStackCount;
 
         if (stack.IsActive)
         {
@@ -228,7 +204,7 @@ public sealed class StatusEffect : IPoolable, IConditional
             }
         }
 
-        ActiveStackCount = activeStacks;
+        UpdateActiveStackCount(activeStacks);
     }
 
     internal void AddStackUnsafe(EffectStack stack)
@@ -236,14 +212,25 @@ public sealed class StatusEffect : IPoolable, IConditional
         Stacks.Add(stack);
     }
 
-    internal void AddStack(StatSet stats, EffectStack newStack, object? source)
+    internal void AddStack(StatSet stats, EffectStack newStack, StackMode stackMode, object? source)
     {
-        int stacksToAdd = HandleNewStack(stats, newStack, source, ActiveStackCount);
-        ActiveStackCount += stacksToAdd;
+        int stacksToAdd = HandleNewStack(stats, newStack, stackMode, source, TotalActiveStackCount);
+        UpdateActiveStackCount(TotalActiveStackCount + stacksToAdd);
     }
 
-    private int HandleNewStack(StatSet stats, EffectStack newStack, object? source, int activeStacks)
+    private int HandleNewStack(StatSet stats, EffectStack newStack, StackMode stackMode, object? source, int activeStacks)
     {
+        if (stackMode == StackMode.MultiFull && EffectDef.CustomEffects.Count > 0)
+        {
+            newStack.CustomConditions = ListPool.Get<Condition>();
+
+            foreach (EffectOnCondition effect in EffectDef.CustomEffects)
+            {
+                Condition condition = effect.Condition.Clone();
+                newStack.CustomConditions.Add(condition);
+            }
+        }
+
         // If new stack has a source, brute force it
         if (source != null)
             return AddStackInternal(stats, newStack, source, true);
@@ -257,7 +244,7 @@ public sealed class StatusEffect : IPoolable, IConditional
             return AddStackInternal(stats, newStack, source, false);
         }
 
-        if (EffectDef.StackMode == StackModes.Multi)
+        if (stackMode is StackMode.MultiDuration or StackMode.MultiFull)
         {
             if (EffectDef.MaxStack > 0)
             {
@@ -273,10 +260,10 @@ public sealed class StatusEffect : IPoolable, IConditional
             return AddStackInternal(stats, newStack, source, false);
         }
 
-        if (EffectDef.StackMode == StackModes.Reup)
+        if (stackMode == StackMode.Refresh)
         {
             foreach (var stack in Stacks)
-                stack.Duration?.ReupAllData();
+                stack.Duration?.RefreshAllData();
         }
 
         EffectStack existingStack = Stacks.Last();
@@ -287,7 +274,7 @@ public sealed class StatusEffect : IPoolable, IConditional
             return AddStackInternal(stats, newStack, source, false);
         }
 
-        if (EffectDef.StackMode == StackModes.Extend)
+        if (stackMode == StackMode.Extend)
             Extend(existingStack, newStack);
 
         int activeStacksAdded = 0;
@@ -333,7 +320,8 @@ public sealed class StatusEffect : IPoolable, IConditional
             // If existing stack has a time condition, extend it.
             if (existingStack.Duration?.GetFirstCondition<TimedCondition>() is TimedCondition effectTime)
             {
-                effectTime.TimeLeft += stackTime.TimeLeft;
+                var timeLeft = effectTime.State.TimeLeft + stackTime.State.TimeLeft;
+                effectTime.State = effectTime.State with { TimeLeft = timeLeft };
                 return;
             }
         }
@@ -342,13 +330,13 @@ public sealed class StatusEffect : IPoolable, IConditional
     internal void RemoveStacksBySource(object? source)
     {
         int activeStacksRemoved = RemoveStacksBySourceInternal(source);
-        ActiveStackCount -= activeStacksRemoved;
+        UpdateActiveStackCount(TotalActiveStackCount - activeStacksRemoved);
     }
 
     internal void RemoveStackByRef(EffectStack stack)
     {
         int activeStacksRemoved = RemoveStackByRefInternal(stack);
-        ActiveStackCount -= activeStacksRemoved;
+        UpdateActiveStackCount(TotalActiveStackCount - activeStacksRemoved);
     }
 
     private int RemoveStackByRefInternal(EffectStack stack)
@@ -381,16 +369,17 @@ public sealed class StatusEffect : IPoolable, IConditional
 
     internal void ReplaceStackBySource(
         StatSet stats,
-        object oldSource,
         EffectStack newStack,
+        StackMode stackMode,
+        object oldSource,
         object? newSource)
     {
-        int activeStacks = ActiveStackCount;
+        int activeStacks = TotalActiveStackCount;
         int activeStacksRemoved = RemoveStacksBySourceInternal(oldSource);
-        int activeStacksAdded = HandleNewStack(stats, newStack, newSource, activeStacks);
+        int activeStacksAdded = HandleNewStack(stats, newStack, stackMode, newSource, activeStacks);
 
         activeStacks += activeStacksAdded - activeStacksRemoved;
-        ActiveStackCount = activeStacks;
+        UpdateActiveStackCount(activeStacks);
     }
 
     internal void UpdateActive(StatSet stats)
@@ -398,20 +387,39 @@ public sealed class StatusEffect : IPoolable, IConditional
         string effectTypeId = EffectTypeId;
         bool wasActive = IsActive;
         bool isImmune = stats.IsImmuneToStatusEffect(effectTypeId);
-        IsActive = !isImmune && HasActiveStacks();
+        IsActive = !isImmune && TotalActiveStackCount > 0;
 
         if (!wasActive && IsActive)
+        {
             Activate(stats, effectTypeId);
+        }
         else if (wasActive && !IsActive)
+        {
             Deactivate(stats, effectTypeId);
+        }
         else if (TotalStackCount == 0)
+        {
             stats.RemoveStatusEffect(effectTypeId);
+        }
+        else if (IsActive && CustomConditions is not null)
+        {
+            if (HasActiveNonMultiStacks())
+            {
+                foreach (Condition condition in CustomConditions)
+                    condition.Initialize(this, null);
+            }
+            else
+            {
+                foreach (Condition condition in CustomConditions)
+                    condition.Uninitialize();
+            }
+        }
 
         void Activate(StatSet stats, string effectTypeId)
         {
             EffectDef.OnActivate?.Invoke(stats, this);
 
-            if (CustomConditions is not null)
+            if (CustomConditions is not null && HasActiveNonMultiStacks())
             {
                 foreach (Condition condition in CustomConditions)
                     condition.Initialize(this, null);
@@ -433,12 +441,44 @@ public sealed class StatusEffect : IPoolable, IConditional
             int stacksRemoved = RemoveStacksBySourceInternal(null);
 
             if (stacksRemoved > 0)
-                ActiveStackCount -= stacksRemoved;
+                UpdateActiveStackCount(TotalActiveStackCount - stacksRemoved);
 
             if (TotalStackCount == 0)
                 stats.RemoveStatusEffect(effectTypeId);
 
             stats.RaiseStatusEffectChanged(effectTypeId);
         }
+    }
+
+    private bool HasActiveNonMultiStacks()
+    {
+        foreach (EffectStack stack in Stacks)
+        {
+            if (stack.IsActive && stack.CustomConditions == null)
+                return true;
+        }
+
+        return false;
+    }
+
+    private void UpdateActiveStackCount(int value)
+    {
+        int prevVal = TotalActiveStackCount;
+
+        if (value < 0)
+            throw new Exception("ActiveStackCount should never be less than 0.");
+
+        if (Stats == null)
+            return;
+
+        TotalActiveStackCount = value;
+
+        if (prevVal > 0 && value > prevVal)
+            EffectDef.OnAddStack?.Invoke(Stats, this);
+
+        Stats.RaiseEffectStackChanged(EffectTypeId);
+
+        //if (prevVal > 0 && value == 0 || prevVal == 0 && value > 0)
+        UpdateActive(Stats);
     }
 }

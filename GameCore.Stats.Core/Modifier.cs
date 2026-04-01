@@ -92,7 +92,7 @@ public sealed class Modifier : IPoolable, IConditional
         return mod;
     }
 
-    public void OnConditionChanged(Condition condition)
+    void IConditional.OnConditionChanged(Condition condition)
     {
         bool isActive = true;
 

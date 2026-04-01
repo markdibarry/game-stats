@@ -2,19 +2,19 @@ using System.Text.Json.Serialization;
 
 namespace GameCore.Stats;
 
-public struct Stat
+public struct StatAttribute
 {
-    public Stat()
+    public StatAttribute()
     {
     }
 
-    public Stat(float baseValue)
+    public StatAttribute(float baseValue)
     {
         BaseValue = baseValue;
     }
 
     [JsonConstructor]
-    public Stat(float baseValue, float currentValue)
+    public StatAttribute(float baseValue, float currentValue)
     {
         BaseValue = baseValue;
         CurrentValue = currentValue;

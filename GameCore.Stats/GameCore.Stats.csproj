@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <NoWarn>NU5128</NoWarn>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <OutputPath>./nupkg</OutputPath>
+    <DebugType>portable</DebugType>
+    <IsAotCompatible>true</IsAotCompatible>
+
+    <Title>Stats</Title>
+    <Version>0.0.1</Version>
+    <Description>A game stats library for use with Godot.</Description>
+    <Copyright>© 2026 Mark DiBarry</Copyright>
+    <Authors>Mark DiBarry</Authors>
+    <Company>Mark DiBarry</Company>
+
+    <PackageId>GameCore.Stats</PackageId>
+    <PackageReleaseNotes>Initial release.</PackageReleaseNotes>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageTags>stats;generator;godot;gamedev</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageProjectUrl>https://github.com/markdibarry/stats</PackageProjectUrl>
+
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/markdibarry/stats.git</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../README.md" Pack="true" PackagePath="\" />
+    <None Include="../LICENSE" Pack="true" PackagePath="\" />
+    <None Include="../icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="GodotSharp" Version="4.5.0" />
+    <ProjectReference Include="../GameCore.Stats.Core/GameCore.Stats.Core.csproj" Pack="false" PrivateAssets="all"/>
+    <ProjectReference Include="../GameCore.Stats.Generator/GameCore.Stats.Generator.csproj" Pack="false" PrivateAssets="all"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(OutputPath)\GameCore.Stats.Core.dll" Pack="true" PackagePath="lib/net10.0/" />
+    <None Include="$(OutputPath)\GameCore.Stats.Generator.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" />
+  </ItemGroup>
+</Project>
